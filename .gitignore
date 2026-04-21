@@ -1,0 +1,22 @@
+.DS_Store
+/.build
+/.build-xflow
+/.modulecache
+/.localhome
+/dist
+/App Icon.png
+/App Icon.pxm
+/Packages
+xcuserdata/
+DerivedData/
+.swiftpm/configuration/registries.json
+.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+.netrc
+.env
+.env.*
+*.p8
+*.p12
+*.mobileprovision
+*.provisionprofile
+*.xcuserstate
+push-device-map.json
