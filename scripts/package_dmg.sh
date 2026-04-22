@@ -45,17 +45,31 @@ ln -s /Applications "$STAGING_DIR/Applications"
 cat > "$INSTRUCTIONS_FILE" <<'TEXT'
 xFlow installation instructions
 
-1. Drag xFlow.app into the Applications shortcut in this window.
-2. Open your Applications folder.
-3. Right-click or Control-click xFlow.app.
-4. Choose Open.
-5. If macOS says the developer cannot be verified, choose Open again.
+1. Open the downloaded .dmg file.
+2. Drag xFlow.app into the Applications shortcut.
+3. Open your Applications folder.
+4. Double-click xFlow.app.
 
-Why this extra Open step is required:
+Because xFlow is currently distributed without Apple notarization, macOS may show this warning:
 
-xFlow is currently shared without an Apple Developer account, so it is not notarized by Apple. macOS shows a warning for non-notarized apps even when they are intentionally built and shared by the developer.
+"Apple could not verify “xFlow” is free of malware that may harm your Mac or compromise your privacy."
 
-Only install apps from sources you trust.
+If you see that warning, do this:
+
+1. Open Apple menu > System Settings.
+2. Click Privacy & Security in the sidebar.
+3. Scroll down to the Security section.
+4. Click Open Anyway for xFlow.
+5. Enter your Mac login password if prompted.
+6. Click OK.
+
+xFlow should open after that.
+
+Important: the Open Anyway button is only available for about one hour after you first try to open the app. If you do not see it, try opening xFlow.app again, then return to Privacy & Security.
+
+Why this happens:
+
+xFlow is not notarized because it is currently distributed without an Apple Developer account. macOS shows this warning for non-notarized apps. This does not mean the app is malware, but you should only install apps from sources you trust.
 TEXT
 
 BACKGROUND_SCRIPT="$(mktemp /tmp/xflow-dmg-background.XXXXXX.swift)"
@@ -92,17 +106,8 @@ let subtitleAttributes: [NSAttributedString.Key: Any] = [
     .paragraphStyle: titleStyle
 ]
 
-"Install xFlow".draw(in: NSRect(x: 0, y: 322, width: size.width, height: 36), withAttributes: titleAttributes)
-"Drag xFlow.app into Applications".draw(in: NSRect(x: 0, y: 292, width: size.width, height: 24), withAttributes: subtitleAttributes)
-"Build: \(archLabel)".draw(in: NSRect(x: 0, y: 26, width: size.width, height: 22), withAttributes: subtitleAttributes)
-
-let iconStyle = NSMutableParagraphStyle()
-iconStyle.alignment = .center
-let iconAttributes: [NSAttributedString.Key: Any] = [
-    .font: NSFont.systemFont(ofSize: 17, weight: .semibold),
-    .foregroundColor: NSColor(calibratedWhite: 0.18, alpha: 1),
-    .paragraphStyle: iconStyle
-]
+"Install xFlow".draw(in: NSRect(x: 0, y: 324, width: size.width, height: 36), withAttributes: titleAttributes)
+"Drag xFlow.app into Applications".draw(in: NSRect(x: 0, y: 294, width: size.width, height: 24), withAttributes: subtitleAttributes)
 
 func roundedPanel(_ rect: NSRect) {
     let path = NSBezierPath(roundedRect: rect, xRadius: 28, yRadius: 28)
@@ -113,18 +118,18 @@ func roundedPanel(_ rect: NSRect) {
     path.stroke()
 }
 
-roundedPanel(NSRect(x: 94, y: 130, width: 150, height: 116))
-roundedPanel(NSRect(x: 416, y: 130, width: 150, height: 116))
+roundedPanel(NSRect(x: 94, y: 180, width: 150, height: 116))
+roundedPanel(NSRect(x: 416, y: 180, width: 150, height: 116))
 
-"xFlow.app".draw(in: NSRect(x: 94, y: 150, width: 150, height: 24), withAttributes: iconAttributes)
-"Applications".draw(in: NSRect(x: 416, y: 150, width: 150, height: 24), withAttributes: iconAttributes)
+let iconStyle = NSMutableParagraphStyle()
+iconStyle.alignment = .center
 
 let arrowAttributes: [NSAttributedString.Key: Any] = [
     .font: NSFont.systemFont(ofSize: 64, weight: .semibold),
     .foregroundColor: NSColor(calibratedWhite: 0.18, alpha: 0.52),
     .paragraphStyle: iconStyle
 ]
-"→".draw(in: NSRect(x: 270, y: 158, width: 120, height: 76), withAttributes: arrowAttributes)
+"→".draw(in: NSRect(x: 270, y: 208, width: 120, height: 76), withAttributes: arrowAttributes)
 
 image.unlockFocus()
 
@@ -147,27 +152,30 @@ hdiutil create -srcfolder "$STAGING_DIR" -volname "$VOLUME_NAME" -fs HFS+ -forma
 MOUNT_DIR="$(mktemp -d /tmp/xflow-dmg-mount.XXXXXX)"
 hdiutil attach "$RW_DMG" -readwrite -noverify -noautoopen -mountpoint "$MOUNT_DIR" >/dev/null
 
-osascript >/dev/null <<APPLESCRIPT || true
+osascript >/dev/null <<APPLESCRIPT
 tell application "Finder"
     set dmgFolder to POSIX file "$MOUNT_DIR" as alias
     set backgroundImage to POSIX file "$MOUNT_DIR/.background/background.png" as alias
     open dmgFolder
-    set current view of container window of dmgFolder to icon view
-    set toolbar visible of container window of dmgFolder to false
-    set statusbar visible of container window of dmgFolder to false
-    set bounds of container window of dmgFolder to {100, 100, 760, 500}
-    set arrangement of icon view options of container window of dmgFolder to not arranged
-    set icon size of icon view options of container window of dmgFolder to 88
-    set background picture of icon view options of container window of dmgFolder to backgroundImage
-    set position of item "xFlow.app" of dmgFolder to {170, 220}
-    set position of item "Applications" of dmgFolder to {492, 220}
-    set position of item "Click here for installation instructions.txt" of dmgFolder to {330, 330}
-    close container window of dmgFolder
+    set dmgWindow to container window of dmgFolder
+    set current view of dmgWindow to icon view
+    set toolbar visible of dmgWindow to false
+    set statusbar visible of dmgWindow to false
+    set bounds of dmgWindow to {100, 100, 760, 500}
+    set arrangement of icon view options of dmgWindow to not arranged
+    set icon size of icon view options of dmgWindow to 88
+    set background picture of icon view options of dmgWindow to backgroundImage
+    set position of item "xFlow.app" of dmgFolder to {170, 170}
+    set position of item "Applications" of dmgFolder to {492, 170}
+    set position of item "Click here for installation instructions.txt" of dmgFolder to {330, 236}
+    close dmgWindow
     open dmgFolder
     update dmgFolder without registering applications
     delay 1
 end tell
 APPLESCRIPT
+
+bless --folder "$MOUNT_DIR" --openfolder "$MOUNT_DIR" >/dev/null 2>&1 || true
 
 hdiutil detach "$MOUNT_DIR" >/dev/null
 rmdir "$MOUNT_DIR"

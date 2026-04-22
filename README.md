@@ -18,24 +18,31 @@ If you are not sure which Mac you have, open **Apple menu > About This Mac**. If
 1. Download the correct `.dmg` file from the GitHub Release.
 2. Double-click the `.dmg` file to open it.
 3. Drag `xFlow.app` into the **Applications** shortcut in the DMG window.
-4. Open **Applications**.
-5. Right-click or Control-click `xFlow.app`.
-6. Choose **Open**.
-7. If macOS warns that the app cannot be verified, choose **Open** again.
+4. Open your **Applications** folder.
+5. Double-click `xFlow.app`.
 
-You only need to use **Right-click > Open** the first time. After that, xFlow should open normally.
+## If macOS Blocks xFlow
 
-## Why macOS Shows a Warning
+Because xFlow is currently distributed without Apple notarization, macOS may show this warning:
 
-xFlow is currently distributed independently without an Apple Developer account. That means the app is not notarized by Apple.
+> Apple could not verify “xFlow” is free of malware that may harm your Mac or compromise your privacy.
 
-macOS may show a warning like:
+If you see that warning:
 
-> "xFlow cannot be opened because Apple cannot check it for malicious software."
+1. Open **Apple menu > System Settings**.
+2. Click **Privacy & Security** in the sidebar.
+3. Scroll down to **Security**.
+4. Click **Open Anyway** for xFlow.
+5. Enter your Mac login password if prompted.
+6. Click **OK**.
 
-This warning appears for non-notarized apps, even when the app is intentionally built and shared by the developer. Right-clicking and choosing **Open** tells macOS that you trust this specific app.
+xFlow should open after that.
 
-Only do this for apps downloaded from sources you trust.
+The **Open Anyway** button is only available for about one hour after you first try to open the app. If you do not see it, try opening `xFlow.app` again, then return to **Privacy & Security**.
+
+## Why This Happens
+
+xFlow is not notarized because it is currently distributed without an Apple Developer account. macOS shows this warning for non-notarized apps. This does not mean the app is malware, but you should only install apps from sources you trust.
 
 ## Updates
 
