@@ -1,7 +1,7 @@
 {
-  "latestVersion": "1.1",
-  "publishedAt": "2026-04-21T22:32:13Z",
-  "downloadURL": "https://github.com/distantg/xFlow/releases/tag/v1.1",
-  "releaseNotes": "Adds the new xFlow app icon, Apple Silicon and Intel DMG installers, cleaner Add Column search placeholders, and packaging reliability fixes.",
+  "latestVersion": "1.2",
+  "publishedAt": "2026-04-22T02:16:04Z",
+  "downloadURL": "https://github.com/distantg/xFlow/releases/tag/v1.2",
+  "releaseNotes": "Opens non-X links in the default browser, improves profile column placeholder text, adds the updated app icon, and documents that replacing xFlow.app preserves accounts and layouts.",
   "minimumSupportedVersion": "1.0"
 }

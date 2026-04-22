@@ -546,9 +546,42 @@ struct WebColumnView: NSViewRepresentable {
             windowFeatures: WKWindowFeatures
         ) -> WKWebView? {
             if navigationAction.targetFrame == nil, let targetURL = navigationAction.request.url {
-                webView.load(URLRequest(url: targetURL))
+                if Self.shouldOpenExternally(targetURL) {
+                    NSWorkspace.shared.open(targetURL)
+                } else {
+                    webView.load(URLRequest(url: targetURL))
+                }
             }
             return nil
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            decidePolicyFor navigationAction: WKNavigationAction,
+            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        ) {
+            guard let targetURL = navigationAction.request.url else {
+                decisionHandler(.allow)
+                return
+            }
+
+            if Self.shouldOpenExternally(targetURL) {
+                NSWorkspace.shared.open(targetURL)
+                decisionHandler(.cancel)
+                return
+            }
+
+            decisionHandler(.allow)
+        }
+
+        static func shouldOpenExternally(_ url: URL) -> Bool {
+            guard let scheme = url.scheme?.lowercased(),
+                  scheme == "http" || scheme == "https",
+                  let host = url.host?.lowercased() else {
+                return false
+            }
+
+            return host != "x.com" && host != "www.x.com"
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {

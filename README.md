@@ -54,6 +54,8 @@ https://raw.githubusercontent.com/distantg/xFlow/main/update-manifest.json
 
 Manual checks show available updates immediately. Automatic background checks wait 7 days after a release is published before notifying users.
 
+To update xFlow, download the newest DMG, drag `xFlow.app` into **Applications**, and choose **Replace** when Finder asks. Your accounts, login sessions, column layouts, and preferences are stored separately from the app bundle and should remain intact when replacing `xFlow.app`.
+
 ## Build From Source
 
 Requirements:

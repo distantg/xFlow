@@ -72,7 +72,7 @@ enum DeckColumnType: String, Codable, CaseIterable, Identifiable {
         case .search:
             return "Enter search term"
         case .profile:
-            return "jack"
+            return "Enter @username"
         case .list:
             return "https://x.com/i/lists/188887"
         default:

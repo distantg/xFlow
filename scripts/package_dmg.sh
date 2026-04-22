@@ -67,6 +67,10 @@ xFlow should open after that.
 
 Important: the Open Anyway button is only available for about one hour after you first try to open the app. If you do not see it, try opening xFlow.app again, then return to Privacy & Security.
 
+Updating xFlow:
+
+To update, download the newest DMG, drag xFlow.app into Applications, and choose Replace when Finder asks. Your accounts, login sessions, column layouts, and preferences are stored separately from the app and should remain intact when replacing xFlow.app.
+
 Why this happens:
 
 xFlow is not notarized because it is currently distributed without an Apple Developer account. macOS shows this warning for non-notarized apps. This does not mean the app is malware, but you should only install apps from sources you trust.
