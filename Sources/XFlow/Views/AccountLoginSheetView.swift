@@ -37,7 +37,8 @@ struct AccountLoginSheetView: View {
                 },
                 enableChromeStripping: false,
                 enableMediaCapture: false,
-                enableHandleDetection: true
+                enableHandleDetection: true,
+                enableBroadHandleDetection: true
             )
             .id("login-\(account.id.uuidString)")
         }

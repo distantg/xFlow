@@ -50,7 +50,9 @@ struct ColumnCardView: View {
                 onDetectedProfileImage: onDetectedProfileImage,
                 onPageTitle: onPageTitle,
                 onMediaRequest: onMediaRequest,
-                onUnreadNotificationCountChanged: onUnreadNotificationCountChanged
+                onUnreadNotificationCountChanged: onUnreadNotificationCountChanged,
+                enableHandleDetection: column.type.allowsAccountMetadataDetection,
+                enableAccountTextHandleDetection: column.type == .notifications
             )
             .id("\(column.id.uuidString)-\(activeAccountID.uuidString)")
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))

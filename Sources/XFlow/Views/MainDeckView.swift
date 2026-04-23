@@ -293,7 +293,9 @@ struct MainDeckView: View {
                 endColumnDrag(column.id)
             },
             onNavigation: { url in
-                store.captureHandle(for: renderAccountID, from: url)
+                if column.type.allowsAccountMetadataDetection {
+                    store.captureHandle(for: renderAccountID, from: url)
+                }
                 store.captureListMetadata(for: column.id, from: url, pageTitle: nil)
             },
             onDetectedHandle: { handle in

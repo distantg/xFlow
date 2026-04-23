@@ -38,6 +38,9 @@ struct QuickActionPanelView: View {
                 accountID: accountID,
                 filter: .none,
                 onNavigation: { url in
+                    guard destination.action == .profile else {
+                        return
+                    }
                     store.captureHandle(for: accountID, from: url)
                 },
                 onDetectedHandle: { handle in
@@ -48,7 +51,9 @@ struct QuickActionPanelView: View {
                 },
                 enableChromeStripping: true,
                 enableMediaCapture: true,
-                enableHandleDetection: true
+                enableHandleDetection: destination.action.allowsAccountMetadataDetection,
+                enableAccountTextHandleDetection: destination.action == .notifications,
+                enableBroadHandleDetection: destination.action == .profile
             )
         }
         .frame(minWidth: 1020, minHeight: 760)

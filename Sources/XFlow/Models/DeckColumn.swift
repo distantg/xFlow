@@ -89,6 +89,15 @@ enum DeckColumnType: String, Codable, CaseIterable, Identifiable {
         }
     }
 
+    var allowsAccountMetadataDetection: Bool {
+        switch self {
+        case .home, .notifications, .messages, .bookmarks, .explore:
+            return true
+        case .search, .profile, .list:
+            return false
+        }
+    }
+
     func subtitle(for parameter: String?) -> String? {
         let clean = parameter?.trimmed
         switch self {

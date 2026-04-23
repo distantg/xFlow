@@ -112,6 +112,8 @@ struct WebColumnView: NSViewRepresentable {
     var enableChromeStripping: Bool = true
     var enableMediaCapture: Bool = true
     var enableHandleDetection: Bool = true
+    var enableAccountTextHandleDetection: Bool = false
+    var enableBroadHandleDetection: Bool = false
     var onPageReadyScript: String? = nil
     var routeHorizontalScrollToParent: Bool = true
 
@@ -124,6 +126,8 @@ struct WebColumnView: NSViewRepresentable {
             onMediaRequest: onMediaRequest,
             onUnreadNotificationCountChanged: onUnreadNotificationCountChanged,
             enableHandleDetection: enableHandleDetection,
+            enableAccountTextHandleDetection: enableAccountTextHandleDetection,
+            enableBroadHandleDetection: enableBroadHandleDetection,
             onPageReadyScript: onPageReadyScript
         )
     }
@@ -172,6 +176,8 @@ struct WebColumnView: NSViewRepresentable {
         context.coordinator.filter = filter
         context.coordinator.accountID = accountID
         context.coordinator.enableHandleDetection = enableHandleDetection
+        context.coordinator.enableAccountTextHandleDetection = enableAccountTextHandleDetection
+        context.coordinator.enableBroadHandleDetection = enableBroadHandleDetection
         context.coordinator.onPageReadyScript = onPageReadyScript
 
         webView.load(URLRequest(url: url))
@@ -187,6 +193,8 @@ struct WebColumnView: NSViewRepresentable {
         context.coordinator.onMediaRequest = onMediaRequest
         context.coordinator.onUnreadNotificationCountChanged = onUnreadNotificationCountChanged
         context.coordinator.enableHandleDetection = enableHandleDetection
+        context.coordinator.enableAccountTextHandleDetection = enableAccountTextHandleDetection
+        context.coordinator.enableBroadHandleDetection = enableBroadHandleDetection
         context.coordinator.onPageReadyScript = onPageReadyScript
         if let webView = webView as? DeckWKWebView {
             webView.routeHorizontalScrollToParent = routeHorizontalScrollToParent
@@ -501,6 +509,8 @@ struct WebColumnView: NSViewRepresentable {
         var onMediaRequest: ((MediaRequest) -> Void)?
         var onUnreadNotificationCountChanged: ((Int, String?) -> Void)?
         var enableHandleDetection: Bool
+        var enableAccountTextHandleDetection: Bool
+        var enableBroadHandleDetection: Bool
         var onPageReadyScript: String?
 
         init(
@@ -511,6 +521,8 @@ struct WebColumnView: NSViewRepresentable {
             onMediaRequest: ((MediaRequest) -> Void)?,
             onUnreadNotificationCountChanged: ((Int, String?) -> Void)?,
             enableHandleDetection: Bool,
+            enableAccountTextHandleDetection: Bool,
+            enableBroadHandleDetection: Bool,
             onPageReadyScript: String?
         ) {
             self.onNavigation = onNavigation
@@ -520,6 +532,8 @@ struct WebColumnView: NSViewRepresentable {
             self.onMediaRequest = onMediaRequest
             self.onUnreadNotificationCountChanged = onUnreadNotificationCountChanged
             self.enableHandleDetection = enableHandleDetection
+            self.enableAccountTextHandleDetection = enableAccountTextHandleDetection
+            self.enableBroadHandleDetection = enableBroadHandleDetection
             self.onPageReadyScript = onPageReadyScript
         }
 

@@ -104,7 +104,7 @@ final class DeckStore: ObservableObject {
 
         refreshAuthenticationState(for: activeAccountID, shouldPromptIfNeeded: true)
         for account in accounts where !account.requiresLogin {
-            refreshProfileMetadataIfNeeded(for: account.id, force: false)
+            refreshProfileMetadataIfNeeded(for: account.id, force: true)
         }
     }
 
@@ -223,7 +223,7 @@ final class DeckStore: ObservableObject {
         loadColumnsForActiveAccount()
         refreshAllColumns()
         refreshAuthenticationState(for: accountID, shouldPromptIfNeeded: true)
-        refreshProfileMetadataIfNeeded(for: accountID, force: false)
+        refreshProfileMetadataIfNeeded(for: accountID, force: true)
     }
 
     func presentLoginFlow(for accountID: UUID) {
@@ -274,7 +274,7 @@ final class DeckStore: ObservableObject {
                 if self.presentedLoginAccountID == accountID {
                     self.presentedLoginAccountID = nil
                 }
-                self.refreshProfileMetadataIfNeeded(for: accountID, force: false)
+                self.refreshProfileMetadataIfNeeded(for: accountID, force: true)
             } else if shouldPromptIfNeeded {
                 self.presentedLoginAccountID = accountID
             }

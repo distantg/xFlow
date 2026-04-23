@@ -74,6 +74,17 @@ enum XSidebarAction: String, CaseIterable, Identifiable {
         }
     }
 
+    var allowsAccountMetadataDetection: Bool {
+        switch self {
+        case .home, .notifications, .messages, .bookmarks:
+            return true
+        case .search, .grok, .premium, .creatorStudio, .articles, .more, .compose:
+            return false
+        case .profile:
+            return true
+        }
+    }
+
     func url(forHandle handle: String?) -> URL? {
         switch self {
         case .home:
@@ -95,10 +106,7 @@ enum XSidebarAction: String, CaseIterable, Identifiable {
         case .articles:
             return URL(string: "https://help.x.com/en/using-x/articles")
         case .profile:
-            let cleaned = (handle ?? "")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .replacingOccurrences(of: "@", with: "")
-            return URL(string: cleaned.isEmpty ? "https://x.com/i/profile" : "https://x.com/\(cleaned)")
+            return URL(string: "https://x.com/i/profile")
         case .more:
             return URL(string: "https://x.com/settings")
         case .compose:
