@@ -288,6 +288,64 @@ struct WebColumnView: NSViewRepresentable {
             return /full\\s*screen|fullscreen|picture\\s*in\\s*picture|picture-in-picture|\\bpip\\b/.test(label);
           }
 
+          function isPictureInPictureControl(node) {
+            const label = buttonLabel(node);
+            return /picture\\s*in\\s*picture|picture-in-picture|\\bpip\\b/.test(label);
+          }
+
+          function protectPiPPlayback(video) {
+            if (!video || video.__xflowOriginalPause) return;
+            const originalPause = video.pause.bind(video);
+            video.__xflowOriginalPause = originalPause;
+            video.pause = function() {
+              if (video.__xflowInNativePiP) return;
+              return originalPause();
+            };
+            video.addEventListener('webkitpresentationmodechanged', function() {
+              const isPiP = video.webkitPresentationMode === 'picture-in-picture';
+              video.__xflowInNativePiP = isPiP;
+              if (!isPiP && video.__xflowOriginalPause) {
+                video.pause = video.__xflowOriginalPause;
+                delete video.__xflowOriginalPause;
+              }
+            });
+            video.addEventListener('leavepictureinpicture', function() {
+              video.__xflowInNativePiP = false;
+              if (video.__xflowOriginalPause) {
+                video.pause = video.__xflowOriginalPause;
+                delete video.__xflowOriginalPause;
+              }
+            });
+          }
+
+          function requestNativePictureInPicture(video) {
+            if (!video) return false;
+            try {
+              if ('disablePictureInPicture' in video) video.disablePictureInPicture = false;
+              protectPiPPlayback(video);
+              video.__xflowInNativePiP = true;
+
+              if (typeof video.webkitSupportsPresentationMode === 'function' &&
+                  video.webkitSupportsPresentationMode('picture-in-picture') &&
+                  typeof video.webkitSetPresentationMode === 'function') {
+                video.webkitSetPresentationMode('picture-in-picture');
+                if (video.paused && video.play) video.play().catch(function() {});
+                return true;
+              }
+
+              if (document.pictureInPictureEnabled && typeof video.requestPictureInPicture === 'function') {
+                video.requestPictureInPicture().catch(function() {
+                  video.__xflowInNativePiP = false;
+                });
+                if (video.paused && video.play) video.play().catch(function() {});
+                return true;
+              }
+            } catch (_) {
+              video.__xflowInNativePiP = false;
+            }
+            return false;
+          }
+
           function isPlaybackControlTarget(event) {
             if (event.target.closest('input[type="range"], progress')) return true;
             const controlButton = event.target.closest('button, [role="button"]');
@@ -328,6 +386,11 @@ struct WebColumnView: NSViewRepresentable {
                 const permalink = findPermalink(videoContainer) || window.location.href;
                 const videoNode = videoContainer.querySelector('video');
                 if (!videoNode) return;
+                if (isPictureInPictureControl(controlButton) && requestNativePictureInPicture(videoNode)) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  return;
+                }
                 const mediaURL = videoNode.currentSrc || videoNode.src || '';
                 const timestamp = Number.isFinite(videoNode.currentTime) ? videoNode.currentTime : 0;
                 videoNode.pause();
