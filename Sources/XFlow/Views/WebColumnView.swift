@@ -595,6 +595,10 @@ struct WebColumnView: NSViewRepresentable {
                 return false
             }
 
+            if host == "accounts.google.com", url.path == "/gsi/button" {
+                return false
+            }
+
             return host != "x.com" && host != "www.x.com"
         }
 

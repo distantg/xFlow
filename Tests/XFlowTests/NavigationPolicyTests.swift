@@ -16,4 +16,10 @@ final class NavigationPolicyTests: XCTestCase {
         XCTAssertFalse(WebColumnView.Coordinator.shouldOpenExternally(URL(string: "about:blank")!))
         XCTAssertFalse(WebColumnView.Coordinator.shouldOpenExternally(URL(string: "blob:https://x.com/123")!))
     }
+
+    func testEmbeddedGoogleSignInButtonDoesNotOpenExternally() {
+        let url = URL(string: "https://accounts.google.com/gsi/button?theme=outline&client_id=abc.apps.googleusercontent.com")!
+
+        XCTAssertFalse(WebColumnView.Coordinator.shouldOpenExternally(url))
+    }
 }
