@@ -87,7 +87,10 @@ struct MediaLightboxView: View {
     @ViewBuilder
     private var content: some View {
         if request.kind == .image, isHTTPURL(request.url) {
-            imageContent(url: request.url)
+            imageContent(
+                preferredURL: request.mediaURL ?? request.url,
+                fallbackURL: request.url
+            )
         } else if request.kind == .video {
             if let directSource = inlineVideoSourceURL {
                 InlineVideoPlayerWebView(
@@ -101,7 +104,7 @@ struct MediaLightboxView: View {
                     accountID: accountID,
                     filter: .none,
                     enableChromeStripping: false,
-                    enableMediaCapture: false,
+                    enableMediaCapture: true,
                     enableHandleDetection: false,
                     onPageReadyScript: videoSeekScript(startTime: request.currentTime ?? 0),
                     routeHorizontalScrollToParent: false
@@ -122,28 +125,13 @@ struct MediaLightboxView: View {
     }
 
     @ViewBuilder
-    private func imageContent(url: URL) -> some View {
+    private func imageContent(preferredURL: URL, fallbackURL: URL) -> some View {
         GeometryReader { proxy in
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: proxy.size.width, maxHeight: proxy.size.height)
-                case .failure:
-                    Color.black.opacity(0.55)
-                        .overlay(
-                            Text("Could not load image")
-                                .foregroundStyle(.white.opacity(0.9))
-                        )
-                default:
-                    ProgressView()
-                        .controlSize(.large)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(Color.black.opacity(0.45))
-                }
-            }
+            FallbackRemoteImageView(
+                preferredURL: preferredURL,
+                fallbackURL: fallbackURL
+            )
+            .frame(maxWidth: proxy.size.width, maxHeight: proxy.size.height)
         }
     }
 
@@ -219,6 +207,53 @@ struct MediaLightboxView: View {
         }
         let path = url.path.lowercased()
         return path.hasSuffix(".m3u8") || path.hasSuffix(".mp4") || path.hasSuffix(".mov")
+    }
+}
+
+private struct FallbackRemoteImageView: View {
+    let preferredURL: URL
+    let fallbackURL: URL
+
+    @State private var activeURL: URL
+    @State private var hasTriedFallback = false
+
+    init(preferredURL: URL, fallbackURL: URL) {
+        self.preferredURL = preferredURL
+        self.fallbackURL = fallbackURL
+        _activeURL = State(initialValue: preferredURL)
+    }
+
+    var body: some View {
+        AsyncImage(url: activeURL) { phase in
+            switch phase {
+            case .success(let image):
+                image
+                    .resizable()
+                    .scaledToFit()
+            case .failure:
+                if !hasTriedFallback && activeURL != fallbackURL {
+                    ProgressView()
+                        .controlSize(.large)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Color.black.opacity(0.45))
+                        .task {
+                            hasTriedFallback = true
+                            activeURL = fallbackURL
+                        }
+                } else {
+                    Color.black.opacity(0.55)
+                        .overlay(
+                            Text("Could not load image")
+                                .foregroundStyle(.white.opacity(0.9))
+                        )
+                }
+            default:
+                ProgressView()
+                    .controlSize(.large)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.black.opacity(0.45))
+            }
+        }
     }
 }
 
