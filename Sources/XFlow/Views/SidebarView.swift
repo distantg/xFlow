@@ -25,8 +25,6 @@ struct SidebarView: View {
         .search,
         .notifications,
         .messages,
-        .grok,
-        .premium,
         .bookmarks,
         .creatorStudio,
         .articles,

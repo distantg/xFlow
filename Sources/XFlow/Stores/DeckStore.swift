@@ -175,7 +175,7 @@ final class DeckStore: ObservableObject {
             }
         case .compose:
             presentComposer()
-        case .grok, .premium, .profile, .more:
+        case .profile, .more:
             presentQuickAction(action)
         }
     }

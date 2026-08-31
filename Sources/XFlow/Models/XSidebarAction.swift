@@ -5,8 +5,6 @@ enum XSidebarAction: String, CaseIterable, Identifiable {
     case search
     case notifications
     case messages
-    case grok
-    case premium
     case bookmarks
     case creatorStudio
     case articles
@@ -26,10 +24,6 @@ enum XSidebarAction: String, CaseIterable, Identifiable {
             return "Notifications"
         case .messages:
             return "Direct Messages"
-        case .grok:
-            return "Grok"
-        case .premium:
-            return "Premium"
         case .bookmarks:
             return "Bookmarks"
         case .creatorStudio:
@@ -55,10 +49,6 @@ enum XSidebarAction: String, CaseIterable, Identifiable {
             return "bell"
         case .messages:
             return "envelope"
-        case .grok:
-            return "sparkles"
-        case .premium:
-            return "checkmark.seal"
         case .bookmarks:
             return "bookmark"
         case .creatorStudio:
@@ -78,7 +68,7 @@ enum XSidebarAction: String, CaseIterable, Identifiable {
         switch self {
         case .home, .notifications, .messages, .bookmarks:
             return true
-        case .search, .grok, .premium, .creatorStudio, .articles, .more, .compose:
+        case .search, .creatorStudio, .articles, .more, .compose:
             return false
         case .profile:
             return true
@@ -95,10 +85,6 @@ enum XSidebarAction: String, CaseIterable, Identifiable {
             return URL(string: "https://x.com/notifications")
         case .messages:
             return URL(string: "https://x.com/messages")
-        case .grok:
-            return URL(string: "https://x.com/i/grok")
-        case .premium:
-            return URL(string: "https://x.com/settings/premium")
         case .bookmarks:
             return URL(string: "https://x.com/i/bookmarks")
         case .creatorStudio:
