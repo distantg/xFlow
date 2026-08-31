@@ -19,4 +19,16 @@ final class MediaCaptureScriptTests: XCTestCase {
 
         XCTAssertNil(exception, exception?.toString() ?? "Unexpected JavaScript syntax error")
     }
+
+    func testMediaCaptureScriptPreservesNormalVideoControls() {
+        let script = WebColumnView.Coordinator.mediaCaptureScript
+
+        XCTAssertTrue(script.contains("isPlaybackControlTarget"))
+        XCTAssertTrue(script.contains("kind: 'video'"))
+        XCTAssertTrue(script.contains("fullscreen/.test"))
+        XCTAssertTrue(script.contains("performance.getEntriesByType('resource')"))
+        XCTAssertTrue(script.contains("disablePictureInPicture"))
+        XCTAssertTrue(script.contains("xflow-disable-pip-control"))
+        XCTAssertFalse(script.contains("pipTarget"))
+    }
 }

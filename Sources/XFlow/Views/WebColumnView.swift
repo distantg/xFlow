@@ -134,13 +134,13 @@ struct WebColumnView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> WKWebView {
         let configuration = WebSessionPool.shared.configuration(for: accountID)
-        Self.enablePictureInPictureMediaPlayback(on: configuration)
         let contentController = configuration.userContentController
         if enableMediaCapture {
             contentController.add(context.coordinator, name: Coordinator.mediaMessageName)
             contentController.addUserScript(WKUserScript(
                 source: Coordinator.mediaCaptureScript,
-                injectionTime: .atDocumentEnd,
+                // Register media interception before X installs its window-level handlers.
+                injectionTime: .atDocumentStart,
                 forMainFrameOnly: true
             ))
         }
@@ -184,18 +184,6 @@ struct WebColumnView: NSViewRepresentable {
         webView.load(URLRequest(url: url))
 
         return webView
-    }
-
-    private static func enablePictureInPictureMediaPlayback(on configuration: WKWebViewConfiguration) {
-        let preferences = configuration.preferences
-        let selector = NSSelectorFromString("_setAllowsPictureInPictureMediaPlayback:")
-        guard preferences.responds(to: selector),
-              let implementation = preferences.method(for: selector) else {
-            return
-        }
-
-        typealias Setter = @convention(c) (AnyObject, Selector, Bool) -> Void
-        unsafeBitCast(implementation, to: Setter.self)(preferences, selector, true)
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
@@ -255,8 +243,6 @@ struct WebColumnView: NSViewRepresentable {
               } else {
                 node.pause && node.pause();
               }
-              node.__xflowPiPPending = false;
-              node.__xflowInNativePiP = false;
               node.muted = true;
             } catch (_) {}
           });
@@ -313,127 +299,50 @@ struct WebColumnView: NSViewRepresentable {
           function shouldOpenVideoPopupFromControl(node) {
             const label = buttonLabel(node);
             if (!label) return false;
-            return /full\\s*screen|fullscreen|picture\\s*in\\s*picture|picture-in-picture|\\bpip\\b/.test(label);
-          }
-
-          function isPictureInPictureControl(node) {
-            const label = buttonLabel(node);
-            return /picture\\s*in\\s*picture|picture-in-picture|\\bpip\\b/.test(label);
-          }
-
-          function ensurePiPKeeper() {
-            let keeper = document.getElementById('xflow-pip-keeper');
-            if (keeper) return keeper;
-            keeper = document.createElement('div');
-            keeper.id = 'xflow-pip-keeper';
-            keeper.style.cssText = 'position:fixed;left:-10000px;top:0;width:1px;height:1px;opacity:0.001;overflow:hidden;pointer-events:none;';
-            document.documentElement.appendChild(keeper);
-            return keeper;
-          }
-
-          function restorePiPPlayback(video) {
-            if (!video) return;
-            video.__xflowPiPPending = false;
-            video.__xflowInNativePiP = false;
-            if (video.__xflowPiPObserver) {
-              video.__xflowPiPObserver.disconnect();
-              delete video.__xflowPiPObserver;
-            }
-            if (video.__xflowOriginalPause) {
-              video.pause = video.__xflowOriginalPause;
-              delete video.__xflowOriginalPause;
-            }
-            if (video.__xflowMovedToPiPKeeper) {
-              video.remove();
-              delete video.__xflowMovedToPiPKeeper;
-            }
-          }
-
-          function installPiPPauseGuard(video) {
-            if (!video) return;
-            if (!video.__xflowOriginalPause) {
-              const originalPause = video.pause.bind(video);
-              video.__xflowOriginalPause = originalPause;
-              video.pause = function() {
-                if (video.__xflowPiPPending || video.__xflowInNativePiP) return;
-                return originalPause();
-              };
-            }
-          }
-
-          function protectPiPPlayback(video) {
-            if (!video) return;
-            if (!video.__xflowPiPListenersInstalled) {
-              video.__xflowPiPListenersInstalled = true;
-              video.addEventListener('webkitpresentationmodechanged', function() {
-                const isPiP = video.webkitPresentationMode === 'picture-in-picture';
-                video.__xflowPiPPending = false;
-                video.__xflowInNativePiP = isPiP;
-                if (isPiP) installPiPPauseGuard(video);
-                if (!isPiP) restorePiPPlayback(video);
-              });
-              video.addEventListener('enterpictureinpicture', function() {
-                video.__xflowPiPPending = false;
-                video.__xflowInNativePiP = true;
-                installPiPPauseGuard(video);
-              });
-              video.addEventListener('leavepictureinpicture', function() {
-                restorePiPPlayback(video);
-              });
-            }
-            if (!video.__xflowPiPObserver) {
-              const observer = new MutationObserver(function() {
-                if ((video.__xflowPiPPending || video.__xflowInNativePiP) && !video.isConnected) {
-                  ensurePiPKeeper().appendChild(video);
-                  video.__xflowMovedToPiPKeeper = true;
-                }
-                if (!video.__xflowPiPPending && !video.__xflowInNativePiP) {
-                  observer.disconnect();
-                  delete video.__xflowPiPObserver;
-                }
-              });
-              observer.observe(document.documentElement, { childList: true, subtree: true });
-              video.__xflowPiPObserver = observer;
-            }
+            return /full\\s*screen|fullscreen/.test(label);
           }
 
           function pauseForPopup(video) {
             if (!video) return;
-            const originalPause = video.__xflowOriginalPause;
-            restorePiPPlayback(video);
             try {
-              if (originalPause) {
-                originalPause();
-              } else {
-                video.pause();
-              }
+              video.pause();
             } catch (_) {}
           }
 
-          function observeNativePictureInPictureRequest(videoContainer, video) {
-            if (!video) return;
-            protectPiPPlayback(video);
-            video.__xflowPiPPending = true;
-            const requestID = Date.now().toString(36) + Math.random().toString(36).slice(2);
-            video.__xflowNativePiPRequestID = requestID;
+          function directVideoURL(video) {
+            const explicitSources = [
+              video && video.currentSrc,
+              video && video.src,
+              video && video.querySelector && video.querySelector('source') && video.querySelector('source').src
+            ];
+            for (const source of explicitSources) {
+              if (isTrustedDirectVideoURL(source)) return source;
+            }
 
-            setTimeout(function() {
-              if (video.__xflowNativePiPRequestID !== requestID) return;
-              const active = video.webkitPresentationMode === 'picture-in-picture' ||
-                document.pictureInPictureElement === video ||
-                video.__xflowInNativePiP;
-              if (active) {
-                video.__xflowPiPPending = false;
-                video.__xflowInNativePiP = true;
-                return;
+            const resources = (performance.getEntriesByType('resource') || []).slice().reverse();
+            for (const resource of resources) {
+              const source = resource && resource.name;
+              if (isTrustedDirectVideoURL(source)) {
+                return source;
               }
-              openVideoPopup(videoContainer, video);
-            }, 2500);
+            }
+            return '';
+          }
+
+          function isTrustedDirectVideoURL(source) {
+            try {
+              const parsed = new URL(source || '');
+              const path = (parsed.pathname || '').toLowerCase();
+              return parsed.protocol === 'https:' && parsed.hostname === 'video.twimg.com' &&
+                (path.endsWith('.mp4') || path.endsWith('.m3u8'));
+            } catch (_) {
+              return false;
+            }
           }
 
           function openVideoPopup(videoContainer, videoNode) {
             const permalink = findPermalink(videoContainer) || window.location.href;
-            const mediaURL = videoNode.currentSrc || videoNode.src || '';
+            const mediaURL = directVideoURL(videoNode);
             const timestamp = Number.isFinite(videoNode.currentTime) ? videoNode.currentTime : 0;
             pauseForPopup(videoNode);
             send({ kind: 'video', url: permalink, mediaURL: mediaURL, currentTime: timestamp });
@@ -447,7 +356,47 @@ struct WebColumnView: NSViewRepresentable {
             return /play|pause|mute|unmute|volume|settings|seek|scrub|speed|captions|subtitle|cc/.test(label);
           }
 
-          document.addEventListener('click', async function(event) {
+          // xFlow does not currently provide a reliable native PiP host. Disable only
+          // WebKit's PiP capability and leave the standard video controls untouched.
+          function disablePictureInPicture(root) {
+            const scope = root && root.querySelectorAll ? root : document;
+            scope.querySelectorAll('video').forEach(function(video) {
+              try {
+                video.disablePictureInPicture = true;
+              } catch (_) {}
+            });
+          }
+
+          function hidePictureInPictureControl() {
+            if (document.getElementById('xflow-disable-pip-control')) return;
+            const style = document.createElement('style');
+            style.id = 'xflow-disable-pip-control';
+            style.textContent = [
+              'button[aria-label*="Picture-in-Picture" i]',
+              '[role="button"][aria-label*="Picture-in-Picture" i]',
+              'button[title*="Picture-in-Picture" i]',
+              '[role="button"][title*="Picture-in-Picture" i]'
+            ].join(',') + '{display:none !important;}';
+            (document.head || document.documentElement).appendChild(style);
+          }
+
+          disablePictureInPicture(document);
+          hidePictureInPictureControl();
+          new MutationObserver(function(records) {
+            records.forEach(function(record) {
+              record.addedNodes.forEach(function(node) {
+                if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
+                if (node.tagName === 'VIDEO') {
+                  try {
+                    node.disablePictureInPicture = true;
+                  } catch (_) {}
+                }
+                disablePictureInPicture(node);
+              });
+            });
+          }).observe(document.documentElement, { childList: true, subtree: true });
+
+          document.addEventListener('click', function(event) {
             const pathname = window.location.pathname || '';
 
             if (pathname.startsWith('/messages')) {
@@ -456,9 +405,11 @@ struct WebColumnView: NSViewRepresentable {
               const videoNode = directVideo || (messageContainer ? messageContainer.querySelector('video') : null);
               const messageControl = event.target.closest('button, [role="button"]');
               const strictControl = event.target.closest('input[type="range"], progress, [aria-label*="volume" i], [aria-label*="settings" i], [aria-label*="seek" i], [aria-label*="scrub" i], [aria-label*="captions" i], [aria-label*="subtitle" i]');
+              if (videoNode && ((messageControl && isPlaybackControlTarget(event)) || strictControl)) {
+                return;
+              }
               if (videoNode && !strictControl) {
-                if (messageControl && isPictureInPictureControl(messageControl)) {
-                  observeNativePictureInPictureRequest(messageContainer || document.body, videoNode);
+                if (messageControl && /picture\\s*in\\s*picture|picture-in-picture|\\bpip\\b/.test(buttonLabel(messageControl))) {
                   return;
                 }
                 const mediaURL = videoNode.currentSrc || videoNode.src || ((videoNode.querySelector && videoNode.querySelector('source')) ? (videoNode.querySelector('source').src || '') : '');
@@ -483,10 +434,6 @@ struct WebColumnView: NSViewRepresentable {
               if (controlButton && shouldOpenVideoPopupFromControl(controlButton)) {
                 const videoNode = videoContainer.querySelector('video');
                 if (!videoNode) return;
-                if (isPictureInPictureControl(controlButton)) {
-                  observeNativePictureInPictureRequest(videoContainer, videoNode);
-                  return;
-                }
                 event.preventDefault();
                 event.stopPropagation();
                 openVideoPopup(videoContainer, videoNode);
