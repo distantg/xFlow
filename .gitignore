@@ -1,21 +1,26 @@
 .DS_Store
 /.build
 /.build-xflow
+/.build-xflow-*
 /.modulecache
 /.localhome
 /dist
 /App Icon.png
 /App Icon.pxm
+/App Icon/
 /Packages
 xcuserdata/
 DerivedData/
 .swiftpm/configuration/registries.json
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
+.npmrc
 .env
 .env.*
 *.p8
 *.p12
+*.pem
+*.key
 *.mobileprovision
 *.provisionprofile
 *.xcuserstate

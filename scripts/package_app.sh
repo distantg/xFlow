@@ -14,7 +14,8 @@ case "$TARGET_ARCH" in
     ARCH_FOLDER="Intel"
     ;;
   *)
-    ARCH_FOLDER="$TARGET_ARCH"
+    echo "Unsupported architecture: $TARGET_ARCH" >&2
+    exit 2
     ;;
 esac
 APP_DIR_NAME="${XFLOW_APP_DIR_NAME:-${ARCH_FOLDER}/${APP_NAME}.app}"
@@ -24,6 +25,35 @@ BIN_PATH="$BUILD_DIR/${TARGET_ARCH}-apple-macosx/release/${BIN_NAME}"
 APP_ICON_PNG="$ROOT_DIR/AppIcon.png"
 CODESIGN_IDENTITY="${XFLOW_CODESIGN_IDENTITY:-"-"}"
 APS_ENVIRONMENT="${XFLOW_APS_ENVIRONMENT:-development}"
+
+if [[ "$APP_DIR_NAME" == /* || "$APP_DIR_NAME" == *".."* || "$APP_DIR_NAME" == *$'\n'* || "$APP_DIR_NAME" == *$'\r'* ]]; then
+  echo "XFLOW_APP_DIR_NAME must stay inside dist and cannot contain traversal components." >&2
+  exit 2
+fi
+case "$APP_DIR_NAME" in
+  "$APP_NAME.app")
+    APP_PARENT=""
+    ;;
+  */"$APP_NAME.app")
+    APP_PARENT="${APP_DIR_NAME%/$APP_NAME.app}"
+    if [[ "$APP_PARENT" == */* ]]; then
+      echo "XFLOW_APP_DIR_NAME may contain at most one output folder." >&2
+      exit 2
+    fi
+    ;;
+  *)
+    echo "XFLOW_APP_DIR_NAME must end with $APP_NAME.app." >&2
+    exit 2
+    ;;
+esac
+if [[ -L "$ROOT_DIR/dist" || ( -n "$APP_PARENT" && -L "$ROOT_DIR/dist/$APP_PARENT" ) ]]; then
+  echo "Refusing to package through a symbolic-link output directory." >&2
+  exit 2
+fi
+if [[ "$APS_ENVIRONMENT" != "development" && "$APS_ENVIRONMENT" != "production" ]]; then
+  echo "XFLOW_APS_ENVIRONMENT must be development or production." >&2
+  exit 2
+fi
 
 cd "$ROOT_DIR"
 
@@ -100,7 +130,7 @@ fi
 xattr -cr "$APP_DIR" 2>/dev/null || true
 
 if [[ "$CODESIGN_IDENTITY" == "-" ]]; then
-  codesign --force --deep --sign - "$APP_DIR"
+  codesign --force --deep --options runtime --sign - "$APP_DIR"
 else
   ENTITLEMENTS_FILE="$ROOT_DIR/dist/xFlow.entitlements"
   cat > "$ENTITLEMENTS_FILE" <<ENTITLEMENTS

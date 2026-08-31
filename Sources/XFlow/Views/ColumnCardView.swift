@@ -110,7 +110,9 @@ struct ColumnCardView: View {
                     }
 
                     Button("Open in Browser") {
-                        NSWorkspace.shared.open(column.url)
+                        if TrustedURLPolicy.isTrustedXPage(column.url) {
+                            NSWorkspace.shared.open(column.url)
+                        }
                     }
 
                     Button("Compose") {

@@ -99,6 +99,30 @@ final class UpdateEvaluatorTests: XCTestCase {
         XCTAssertLessThan(SemanticVersion("1.0.9"), SemanticVersion("1.0.10"))
     }
 
+    func testManifestValidatorRejectsUntrustedDownloadHost() {
+        let manifest = UpdateManifest(
+            latestVersion: "1.4.0",
+            publishedAt: Date(),
+            downloadURL: URL(string: "https://example.com/xFlow.dmg")!,
+            releaseNotes: "Untrusted release.",
+            minimumSupportedVersion: "1.0.0"
+        )
+
+        XCTAssertThrowsError(try UpdateManifestValidator.validate(manifest))
+    }
+
+    func testManifestValidatorRejectsMalformedVersion() {
+        let manifest = UpdateManifest(
+            latestVersion: "1.4.0<script>",
+            publishedAt: Date(),
+            downloadURL: releaseURL,
+            releaseNotes: "Malformed version.",
+            minimumSupportedVersion: "1.0.0"
+        )
+
+        XCTAssertThrowsError(try UpdateManifestValidator.validate(manifest))
+    }
+
     @MainActor
     func testManualFetchFailureShowsErrorAlert() async {
         let manager = UpdateManager(fetcher: FailingManifestFetcher())

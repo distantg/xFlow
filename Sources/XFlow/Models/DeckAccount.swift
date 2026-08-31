@@ -17,8 +17,11 @@ struct DeckAccount: Identifiable, Codable, Equatable {
     ) {
         self.id = id
         self.fallbackName = fallbackName
-        self.handle = handle?.normalizedHandle
-        self.profileImageURL = profileImageURL
+        let normalizedHandle = handle?.normalizedHandle
+        self.handle = normalizedHandle.flatMap {
+            TrustedURLPolicy.isValidXHandle($0) ? $0 : nil
+        }
+        self.profileImageURL = profileImageURL.flatMap(Self.validatedProfileImageString)
         self.requiresLogin = requiresLogin
     }
 
@@ -58,8 +61,11 @@ struct DeckAccount: Identifiable, Codable, Equatable {
         fallbackName = try container.decodeIfPresent(String.self, forKey: .fallbackName)
             ?? container.decodeIfPresent(String.self, forKey: .legacyName)
             ?? "Account"
-        handle = try container.decodeIfPresent(String.self, forKey: .handle)?.normalizedHandle
-        profileImageURL = try container.decodeIfPresent(String.self, forKey: .profileImageURL)
+        let decodedHandle = try container.decodeIfPresent(String.self, forKey: .handle)?.normalizedHandle
+        handle = decodedHandle.flatMap { TrustedURLPolicy.isValidXHandle($0) ? $0 : nil }
+        profileImageURL = try container
+            .decodeIfPresent(String.self, forKey: .profileImageURL)
+            .flatMap(Self.validatedProfileImageString)
         requiresLogin = try container.decodeIfPresent(Bool.self, forKey: .requiresLogin) ?? true
     }
 
@@ -70,6 +76,14 @@ struct DeckAccount: Identifiable, Codable, Equatable {
         try container.encodeIfPresent(handle?.normalizedHandle, forKey: .handle)
         try container.encodeIfPresent(profileImageURL, forKey: .profileImageURL)
         try container.encode(requiresLogin, forKey: .requiresLogin)
+    }
+
+    private static func validatedProfileImageString(_ rawValue: String) -> String? {
+        guard let url = URL(string: rawValue),
+              TrustedURLPolicy.isTrustedProfileImageURL(url) else {
+            return nil
+        }
+        return url.absoluteString
     }
 }
 
@@ -92,25 +106,30 @@ private extension String {
 final class WebSessionPool {
     static let shared = WebSessionPool()
 
-    private let processPool = WKProcessPool()
     private var stores: [UUID: WKWebsiteDataStore] = [:]
     private var profileProbes: [UUID: ProfileMetaProbe] = [:]
     private var pendingProfileMetaCallbacks: [UUID: [(AccountProfileMeta?) -> Void]] = [:]
+    private let pendingStorePurgeKey = "xflow.pendingWebsiteDataStorePurges.v1"
 
-    private init() {}
+    private init() {
+        retryPendingStorePurges()
+    }
 
     func configuration(for accountID: UUID) -> WKWebViewConfiguration {
         let configuration = WKWebViewConfiguration()
-        configuration.processPool = processPool
         configuration.websiteDataStore = dataStore(for: accountID)
+        configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+        configuration.preferences.isFraudulentWebsiteWarningEnabled = true
         return configuration
     }
 
     func appearsAuthenticated(accountID: UUID, completion: @escaping (Bool) -> Void) {
         dataStore(for: accountID).httpCookieStore.getAllCookies { cookies in
-            let names = Set(cookies.map { $0.name.lowercased() })
             // auth_token is the reliable signal for an authenticated X web session.
-            let isAuthenticated = names.contains("auth_token")
+            let isAuthenticated = cookies.contains { cookie in
+                cookie.name.lowercased() == "auth_token" &&
+                    Self.isCookieApplicableToXHome(cookie)
+            }
 
             DispatchQueue.main.async {
                 completion(isAuthenticated)
@@ -157,7 +176,69 @@ final class WebSessionPool {
     func purgeAccount(_ accountID: UUID) {
         profileProbes.removeValue(forKey: accountID)?.cancel()
         pendingProfileMetaCallbacks.removeValue(forKey: accountID)
-        stores.removeValue(forKey: accountID)
+        let store = stores.removeValue(forKey: accountID)
+
+        store?.removeData(
+            ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
+            modifiedSince: .distantPast
+        ) { }
+
+        if #available(macOS 14.0, *) {
+            // SwiftUI releases the account's visible web views on the next render pass.
+            markStorePurgePending(accountID)
+            schedulePersistentStoreRemoval(accountID, delay: 1)
+        }
+    }
+
+    private func retryPendingStorePurges() {
+        guard #available(macOS 14.0, *) else {
+            return
+        }
+
+        let identifiers = UserDefaults.standard
+            .stringArray(forKey: pendingStorePurgeKey)?
+            .compactMap(UUID.init(uuidString:)) ?? []
+        identifiers.forEach { schedulePersistentStoreRemoval($0, delay: 0.25) }
+    }
+
+    private func markStorePurgePending(_ accountID: UUID) {
+        var identifiers = Set(UserDefaults.standard.stringArray(forKey: pendingStorePurgeKey) ?? [])
+        identifiers.insert(accountID.uuidString)
+        UserDefaults.standard.set(identifiers.sorted(), forKey: pendingStorePurgeKey)
+    }
+
+    private func clearPendingStorePurge(_ accountID: UUID) {
+        var identifiers = Set(UserDefaults.standard.stringArray(forKey: pendingStorePurgeKey) ?? [])
+        identifiers.remove(accountID.uuidString)
+        if identifiers.isEmpty {
+            UserDefaults.standard.removeObject(forKey: pendingStorePurgeKey)
+        } else {
+            UserDefaults.standard.set(identifiers.sorted(), forKey: pendingStorePurgeKey)
+        }
+    }
+
+    @available(macOS 14.0, *)
+    private func schedulePersistentStoreRemoval(
+        _ accountID: UUID,
+        delay: TimeInterval,
+        attempt: Int = 0
+    ) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            WKWebsiteDataStore.remove(forIdentifier: accountID) { [weak self] error in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    if error == nil {
+                        self.clearPendingStorePurge(accountID)
+                    } else if attempt < 3 {
+                        self.schedulePersistentStoreRemoval(
+                            accountID,
+                            delay: pow(2, Double(attempt)),
+                            attempt: attempt + 1
+                        )
+                    }
+                }
+            }
+        }
     }
 
     private func dataStore(for accountID: UUID) -> WKWebsiteDataStore {
@@ -182,12 +263,7 @@ final class WebSessionPool {
     ) {
         let cookieStore = dataStore(for: accountID).httpCookieStore
         cookieStore.getAllCookies { cookies in
-            let xCookies = cookies.filter { cookie in
-                let domain = cookie.domain
-                    .trimmingCharacters(in: CharacterSet(charactersIn: "."))
-                    .lowercased()
-                return domain == "x.com" || domain.hasSuffix(".x.com")
-            }
+            let xCookies = cookies.filter { Self.isCookieApplicableToXHome($0) }
 
             guard !xCookies.isEmpty else {
                 DispatchQueue.main.async {
@@ -205,10 +281,38 @@ final class WebSessionPool {
                 request.setValue(value, forHTTPHeaderField: key)
             }
 
-            URLSession.shared.dataTask(with: request) { data, _, _ in
-                let parsed = data
-                    .flatMap { String(data: $0, encoding: .utf8) }
-                    .flatMap(Self.parseProfileMetaFromHTML)
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.httpShouldSetCookies = false
+            configuration.httpCookieStorage = nil
+            configuration.urlCredentialStorage = nil
+            configuration.urlCache = nil
+            configuration.timeoutIntervalForRequest = 5
+            configuration.timeoutIntervalForResource = 6
+
+            let redirectDelegate = RejectRedirectURLSessionDelegate()
+            let session = URLSession(
+                configuration: configuration,
+                delegate: redirectDelegate,
+                delegateQueue: nil
+            )
+
+            session.dataTask(with: request) { data, response, _ in
+                defer { session.finishTasksAndInvalidate() }
+
+                let responseIsTrusted = (response as? HTTPURLResponse).map { response in
+                    (200...299).contains(response.statusCode) &&
+                        response.url.map(TrustedURLPolicy.isTrustedXPage) == true
+                } ?? false
+
+                let parsed: AccountProfileMeta?
+                if responseIsTrusted,
+                   let data,
+                   data.count <= 2 * 1024 * 1024,
+                   let html = String(data: data, encoding: .utf8) {
+                    parsed = Self.parseProfileMetaFromHTML(html)
+                } else {
+                    parsed = nil
+                }
 
                 DispatchQueue.main.async {
                     completion(parsed)
@@ -248,7 +352,7 @@ final class WebSessionPool {
         let handle = handlePatterns
             .compactMap { firstRegexCapture(in: html, pattern: $0) }
             .map { $0.normalizedHandle }
-            .first(where: { !$0.isEmpty })
+            .first(where: TrustedURLPolicy.isValidXHandle)
 
         let rawAvatar = avatarPatterns
             .compactMap { firstRegexCapture(in: html, pattern: $0) }
@@ -270,7 +374,9 @@ final class WebSessionPool {
                 return nil
             }
 
-        let avatarURL = decodedAvatar.flatMap(URL.init(string:))
+        let avatarURL = decodedAvatar
+            .flatMap(URL.init(string:))
+            .flatMap { TrustedURLPolicy.isTrustedProfileImageURL($0) ? $0 : nil }
 
         if handle == nil && avatarURL == nil {
             return nil
@@ -300,6 +406,38 @@ final class WebSessionPool {
             .replacingOccurrences(of: "\\/", with: "/")
             .replacingOccurrences(of: "&amp;", with: "&")
             .replacingOccurrences(of: "\\\\", with: "\\")
+    }
+
+    nonisolated static func isCookieApplicableToXHome(
+        _ cookie: HTTPCookie,
+        now: Date = Date()
+    ) -> Bool {
+        guard cookie.isSecure,
+              cookie.expiresDate.map({ $0 > now }) ?? true else {
+            return false
+        }
+
+        var domain = cookie.domain.lowercased()
+        while domain.hasPrefix(".") {
+            domain.removeFirst()
+        }
+        guard domain == "x.com" else {
+            return false
+        }
+
+        let requestPath = "/home"
+        let cookiePath = cookie.path.isEmpty ? "/" : cookie.path
+        if cookiePath == "/" || requestPath == cookiePath {
+            return true
+        }
+        guard requestPath.hasPrefix(cookiePath) else {
+            return false
+        }
+        if cookiePath.hasSuffix("/") {
+            return true
+        }
+        let boundary = requestPath.index(requestPath.startIndex, offsetBy: cookiePath.count)
+        return boundary < requestPath.endIndex && requestPath[boundary] == "/"
     }
 
     private final class ProfileMetaProbe: NSObject, WKNavigationDelegate {
@@ -486,8 +624,32 @@ final class WebSessionPool {
             }
         }
 
+        func webView(
+            _ webView: WKWebView,
+            decidePolicyFor navigationAction: WKNavigationAction,
+            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        ) {
+            guard let url = navigationAction.request.url else {
+                decisionHandler(.cancel)
+                return
+            }
+
+            if navigationAction.targetFrame?.isMainFrame == false {
+                decisionHandler(TrustedURLPolicy.isSafeSubframeURL(url) ? .allow : .cancel)
+                return
+            }
+
+            let isAllowed = TrustedURLPolicy.isTrustedXPage(url) || url.absoluteString == "about:blank"
+            decisionHandler(isAllowed ? .allow : .cancel)
+        }
+
         @MainActor
         private func handleDidFinish(_ webView: WKWebView) {
+            guard webView.url.map(TrustedURLPolicy.isTrustedXPage) == true else {
+                finish(with: nil)
+                return
+            }
+
             webView.evaluateJavaScript(Self.extractionScript) { [weak self] result, _ in
                 guard let self else { return }
                 guard let payload = result as? String,
@@ -497,15 +659,19 @@ final class WebSessionPool {
                     return
                 }
 
-                let handle = (json["handle"] as? String)?
+                let normalizedHandle = (json["handle"] as? String)?
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                     .normalizedHandle
+                let handle = normalizedHandle.flatMap {
+                    TrustedURLPolicy.isValidXHandle($0) ? $0 : nil
+                }
 
                 let avatarRaw = (json["avatar"] as? String)?
                     .trimmingCharacters(in: .whitespacesAndNewlines)
 
                 let avatarURL = avatarRaw
                     .flatMap { $0.isEmpty ? nil : URL(string: $0) }
+                    .flatMap { TrustedURLPolicy.isTrustedProfileImageURL($0) ? $0 : nil }
 
                 if (handle == nil || handle?.isEmpty == true) && avatarURL == nil {
                     self.finish(with: nil)

@@ -24,11 +24,52 @@ struct MediaRequest: Identifiable {
             self.mediaURL = mediaURL
         }
     }
+
+    static func validatedBridgeRequest(
+        kind: MediaKind,
+        url: URL,
+        currentTime: Double?,
+        mediaURL: URL?
+    ) -> MediaRequest? {
+        let safeTime = currentTime.flatMap { value -> Double? in
+            guard value.isFinite, value >= 0, value <= 24 * 60 * 60 else {
+                return nil
+            }
+            return value
+        }
+
+        switch kind {
+        case .image:
+            guard TrustedURLPolicy.isTrustedImageMediaURL(url) else {
+                return nil
+            }
+            let candidate = mediaURL ?? url
+            guard TrustedURLPolicy.isTrustedImageMediaURL(candidate) else {
+                return nil
+            }
+            return MediaRequest(kind: kind, url: url, currentTime: safeTime, mediaURL: candidate)
+
+        case .video:
+            guard TrustedURLPolicy.isTrustedXPage(url) else {
+                return nil
+            }
+            let trustedMediaURL = mediaURL.flatMap {
+                TrustedURLPolicy.isTrustedVideoMediaURL($0) ? $0 : nil
+            }
+            return MediaRequest(kind: kind, url: url, currentTime: safeTime, mediaURL: trustedMediaURL)
+
+        case .link:
+            guard TrustedURLPolicy.isTrustedXPage(url) else {
+                return nil
+            }
+            return MediaRequest(kind: kind, url: url, currentTime: safeTime, mediaURL: nil)
+        }
+    }
 }
 
 enum XMediaURLResolver {
     static func originalImageURL(from url: URL) -> URL {
-        guard url.host?.lowercased() == "pbs.twimg.com",
+        guard TrustedURLPolicy.isTrustedImageMediaURL(url),
               url.path.hasPrefix("/media/"),
               var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
             return url

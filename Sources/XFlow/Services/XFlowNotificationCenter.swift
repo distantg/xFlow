@@ -131,6 +131,9 @@ final class XFlowNotificationCenter: NSObject, ObservableObject {
             pendingAccountSwitchID = accountID
             return
         }
+        guard store.account(with: accountID) != nil else {
+            return
+        }
 
         NSApp.activate(ignoringOtherApps: true)
         store.switchAccount(to: accountID)

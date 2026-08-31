@@ -41,21 +41,64 @@ protocol UpdateManifestFetching {
 
 struct RemoteUpdateManifestFetcher: UpdateManifestFetching {
     func fetchManifest(from url: URL) async throws -> UpdateManifest {
-        let (data, response) = try await URLSession.shared.data(from: url)
-        if let httpResponse = response as? HTTPURLResponse,
-           !(200...299).contains(httpResponse.statusCode) {
+        guard TrustedURLPolicy.isTrustedUpdateManifestURL(url) else {
+            throw UpdateCheckError.untrustedURL
+        }
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.httpShouldSetCookies = false
+        configuration.httpCookieStorage = nil
+        configuration.urlCredentialStorage = nil
+        configuration.urlCache = nil
+        configuration.timeoutIntervalForRequest = 8
+        configuration.timeoutIntervalForResource = 12
+        let redirectDelegate = RejectRedirectURLSessionDelegate()
+        let session = URLSession(
+            configuration: configuration,
+            delegate: redirectDelegate,
+            delegateQueue: nil
+        )
+        defer { session.finishTasksAndInvalidate() }
+
+        let (bytes, response) = try await session.bytes(from: url)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw UpdateCheckError.invalidResponse
+        }
+        guard (200...299).contains(httpResponse.statusCode) else {
             throw UpdateCheckError.httpStatus(httpResponse.statusCode)
+        }
+        guard httpResponse.url.map(TrustedURLPolicy.isTrustedUpdateManifestURL) == true else {
+            throw UpdateCheckError.untrustedURL
+        }
+        let maximumBytes = 64 * 1024
+        guard response.expectedContentLength < 0 || response.expectedContentLength <= maximumBytes else {
+            throw UpdateCheckError.payloadTooLarge
+        }
+
+        var data = Data()
+        data.reserveCapacity(min(maximumBytes, max(0, Int(response.expectedContentLength))))
+        for try await byte in bytes {
+            guard data.count < maximumBytes else {
+                throw UpdateCheckError.payloadTooLarge
+            }
+            data.append(byte)
         }
 
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try decoder.decode(UpdateManifest.self, from: data)
+        let manifest = try decoder.decode(UpdateManifest.self, from: data)
+        try UpdateManifestValidator.validate(manifest)
+        return manifest
     }
 }
 
 enum UpdateCheckError: LocalizedError {
     case missingInstalledVersion
     case httpStatus(Int)
+    case invalidManifest
+    case invalidResponse
+    case payloadTooLarge
+    case untrustedURL
 
     var errorDescription: String? {
         switch self {
@@ -63,7 +106,33 @@ enum UpdateCheckError: LocalizedError {
             return "The installed app version could not be read."
         case .httpStatus(let status):
             return "The update manifest returned HTTP \(status)."
+        case .invalidManifest:
+            return "The update manifest contains invalid or unsafe values."
+        case .invalidResponse:
+            return "The update server returned an invalid response."
+        case .payloadTooLarge:
+            return "The update manifest is unexpectedly large."
+        case .untrustedURL:
+            return "The update check was redirected to an untrusted location."
         }
+    }
+}
+
+enum UpdateManifestValidator {
+    private static let versionPattern = #"^[0-9]{1,4}(\.[0-9]{1,4}){1,3}$"#
+
+    static func validate(_ manifest: UpdateManifest) throws {
+        guard isValidVersion(manifest.latestVersion),
+              manifest.minimumSupportedVersion.map(isValidVersion) ?? true,
+              manifest.releaseNotes.count <= 10_000,
+              TrustedURLPolicy.isTrustedGitHubReleaseURL(manifest.downloadURL),
+              manifest.downloadURL.path == "/distantg/xFlow/releases/tag/v\(manifest.latestVersion)" else {
+            throw UpdateCheckError.invalidManifest
+        }
+    }
+
+    private static func isValidVersion(_ value: String) -> Bool {
+        value.range(of: versionPattern, options: .regularExpression) != nil
     }
 }
 
@@ -228,6 +297,9 @@ final class UpdateManager: ObservableObject {
     }
 
     func openDownloadPage(_ url: URL) {
+        guard TrustedURLPolicy.isTrustedGitHubReleaseURL(url) else {
+            return
+        }
         NSWorkspace.shared.open(url)
     }
 

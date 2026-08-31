@@ -348,15 +348,17 @@ struct SidebarView: View {
             .replacingOccurrences(of: "\\/", with: "/")
             .replacingOccurrences(of: "&amp;", with: "&")
 
+        let candidate: URL?
         if cleaned.hasPrefix("//") {
-            return URL(string: "https:\(cleaned)")
+            candidate = URL(string: "https:\(cleaned)")
+        } else {
+            candidate = URL(string: cleaned)
         }
 
-        guard cleaned.hasPrefix("http://") || cleaned.hasPrefix("https://") else {
+        guard let candidate, TrustedURLPolicy.isTrustedProfileImageURL(candidate) else {
             return nil
         }
-
-        return URL(string: cleaned)
+        return candidate
     }
 
     private var labelColor: Color {

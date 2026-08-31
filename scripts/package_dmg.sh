@@ -17,9 +17,8 @@ case "$TARGET_ARCH" in
     ARCH_LABEL="Intel"
     ;;
   *)
-    ARCH_FOLDER="$TARGET_ARCH"
-    ARCH_SLUG="$TARGET_ARCH"
-    ARCH_LABEL="$TARGET_ARCH"
+    echo "Unsupported architecture: $TARGET_ARCH" >&2
+    exit 2
     ;;
 esac
 

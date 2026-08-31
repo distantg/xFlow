@@ -128,7 +128,8 @@ enum DeckColumnType: String, Codable, CaseIterable, Identifiable {
         case .search:
             return searchURL(query: parameter?.trimmed.nonEmpty)
         case .profile:
-            let handle = (parameter?.trimmed.removingPrefix("@") ?? "x").nonEmpty ?? "x"
+            let candidate = (parameter?.trimmed.removingPrefix("@") ?? "x").nonEmpty ?? "x"
+            let handle = TrustedURLPolicy.isValidXHandle(candidate) ? candidate : "x"
             return URL(string: "https://x.com/\(handle)")!
         case .list:
             return listURL(parameter: parameter)
@@ -159,7 +160,9 @@ enum DeckColumnType: String, Codable, CaseIterable, Identifiable {
             return URL(string: "https://x.com/i/lists")!
         }
 
-        if let direct = URL(string: raw), direct.scheme != nil {
+        if let direct = URL(string: raw),
+           direct.scheme != nil,
+           TrustedURLPolicy.isTrustedXListURL(direct) {
             return direct
         }
 
@@ -168,15 +171,19 @@ enum DeckColumnType: String, Codable, CaseIterable, Identifiable {
             .removingPrefix("x.com/")
             .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
 
+        let candidate: URL?
         if normalized.hasPrefix("i/lists/") {
-            return URL(string: "https://x.com/\(normalized)")!
+            candidate = URL(string: "https://x.com/\(normalized)")
+        } else if normalized.allSatisfy({ $0.isNumber }) {
+            candidate = URL(string: "https://x.com/i/lists/\(normalized)")
+        } else {
+            candidate = URL(string: "https://x.com/\(normalized)")
         }
 
-        if normalized.allSatisfy({ $0.isNumber }) {
-            return URL(string: "https://x.com/i/lists/\(normalized)")!
+        guard let candidate, TrustedURLPolicy.isTrustedXListURL(candidate) else {
+            return URL(string: "https://x.com/i/lists")!
         }
-
-        return URL(string: "https://x.com/\(normalized)")!
+        return candidate
     }
 }
 

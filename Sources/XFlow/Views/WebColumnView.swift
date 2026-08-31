@@ -141,7 +141,7 @@ struct WebColumnView: NSViewRepresentable {
             contentController.addUserScript(WKUserScript(
                 source: Coordinator.mediaCaptureScript,
                 injectionTime: .atDocumentEnd,
-                forMainFrameOnly: false
+                forMainFrameOnly: true
             ))
         }
 
@@ -150,7 +150,7 @@ struct WebColumnView: NSViewRepresentable {
             contentController.addUserScript(WKUserScript(
                 source: Coordinator.unreadCountScript,
                 injectionTime: .atDocumentEnd,
-                forMainFrameOnly: false
+                forMainFrameOnly: true
             ))
         }
 
@@ -158,7 +158,7 @@ struct WebColumnView: NSViewRepresentable {
             contentController.addUserScript(WKUserScript(
                 source: Coordinator.nativeColumnChromeScript,
                 injectionTime: .atDocumentEnd,
-                forMainFrameOnly: false
+                forMainFrameOnly: true
             ))
         }
 
@@ -270,6 +270,12 @@ struct WebColumnView: NSViewRepresentable {
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
+        enum NavigationDisposition: Equatable {
+            case allowInWebView
+            case openExternally
+            case cancel
+        }
+
         static let mediaMessageName = "xflowMediaRequest"
         static let unreadCountMessageName = "xflowUnreadCount"
 
@@ -709,11 +715,20 @@ struct WebColumnView: NSViewRepresentable {
             for navigationAction: WKNavigationAction,
             windowFeatures: WKWindowFeatures
         ) -> WKWebView? {
-            if navigationAction.targetFrame == nil, let targetURL = navigationAction.request.url {
-                if Self.shouldOpenExternally(targetURL) {
+            if navigationAction.targetFrame == nil,
+               Self.isTrustedFrame(navigationAction.sourceFrame),
+               let targetURL = navigationAction.request.url {
+                switch Self.navigationDisposition(
+                    for: targetURL,
+                    isMainFrame: true,
+                    navigationType: navigationAction.navigationType
+                ) {
+                case .openExternally:
                     NSWorkspace.shared.open(targetURL)
-                } else {
+                case .allowInWebView:
                     webView.load(URLRequest(url: targetURL))
+                case .cancel:
+                    break
                 }
             }
             return nil
@@ -725,34 +740,56 @@ struct WebColumnView: NSViewRepresentable {
             decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
         ) {
             guard let targetURL = navigationAction.request.url else {
-                decisionHandler(.allow)
-                return
-            }
-
-            if Self.shouldOpenExternally(targetURL) {
-                NSWorkspace.shared.open(targetURL)
                 decisionHandler(.cancel)
                 return
             }
 
-            decisionHandler(.allow)
+            switch Self.navigationDisposition(
+                for: targetURL,
+                isMainFrame: navigationAction.targetFrame?.isMainFrame ?? true,
+                navigationType: navigationAction.navigationType
+            ) {
+            case .openExternally:
+                if Self.isTrustedFrame(navigationAction.sourceFrame) {
+                    NSWorkspace.shared.open(targetURL)
+                }
+                decisionHandler(.cancel)
+            case .allowInWebView:
+                decisionHandler(.allow)
+            case .cancel:
+                decisionHandler(.cancel)
+            }
         }
 
-        static func shouldOpenExternally(_ url: URL) -> Bool {
-            guard let scheme = url.scheme?.lowercased(),
-                  scheme == "http" || scheme == "https",
-                  let host = url.host?.lowercased() else {
-                return false
+        static func navigationDisposition(
+            for url: URL,
+            isMainFrame: Bool,
+            navigationType: WKNavigationType
+        ) -> NavigationDisposition {
+            if !isMainFrame {
+                return TrustedURLPolicy.isSafeSubframeURL(url) ? .allowInWebView : .cancel
             }
 
-            if host == "accounts.google.com", url.path == "/gsi/button" {
-                return false
+            if TrustedURLPolicy.isTrustedXPage(url) {
+                return .allowInWebView
             }
 
-            return host != "x.com" && host != "www.x.com"
+            if url.scheme?.lowercased() == "about", url.absoluteString == "about:blank" {
+                return .allowInWebView
+            }
+
+            guard navigationType == .linkActivated,
+                  TrustedURLPolicy.isTrustedExternalWebURL(url) else {
+                return .cancel
+            }
+            return .openExternally
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard Self.isTrustedScriptMessage(message) else {
+                return
+            }
+
             if message.name == Self.mediaMessageName {
                 guard let payload = message.body as? [String: Any],
                       let rawKind = payload["kind"] as? String else {
@@ -767,19 +804,53 @@ struct WebColumnView: NSViewRepresentable {
 
                 let currentTime = (payload["currentTime"] as? NSNumber)?.doubleValue
                 let mediaURL = (payload["mediaURL"] as? String).flatMap(URL.init(string:))
-                onMediaRequest?(MediaRequest(kind: kind, url: parsed, currentTime: currentTime, mediaURL: mediaURL))
+                guard let request = MediaRequest.validatedBridgeRequest(
+                    kind: kind,
+                    url: parsed,
+                    currentTime: currentTime,
+                    mediaURL: mediaURL
+                ) else {
+                    return
+                }
+                onMediaRequest?(request)
                 return
             }
 
             if message.name == Self.unreadCountMessageName {
                 guard let payload = message.body as? [String: Any],
-                      let count = (payload["count"] as? NSNumber)?.intValue else {
+                      let count = (payload["count"] as? NSNumber)?.intValue,
+                      (0...100_000).contains(count) else {
                     return
                 }
                 let activity = (payload["activity"] as? String)?
                     .trimmingCharacters(in: .whitespacesAndNewlines)
-                onUnreadNotificationCountChanged?(count, activity?.isEmpty == true ? nil : activity)
+                    .lowercased()
+                let allowedActivities: Set<String> = [
+                    "new activity",
+                    "new direct message",
+                    "new follower",
+                    "new like",
+                    "new mention",
+                    "new quote",
+                    "new reply",
+                    "new repost"
+                ]
+                let safeActivity = activity.flatMap { allowedActivities.contains($0) ? $0 : nil }
+                onUnreadNotificationCountChanged?(count, safeActivity)
             }
+        }
+
+        private static func isTrustedScriptMessage(_ message: WKScriptMessage) -> Bool {
+            isTrustedFrame(message.frameInfo)
+        }
+
+        private static func isTrustedFrame(_ frame: WKFrameInfo) -> Bool {
+            let origin = frame.securityOrigin
+            return frame.isMainFrame && TrustedURLPolicy.isTrustedXOrigin(
+                scheme: origin.protocol,
+                host: origin.host,
+                port: origin.port
+            )
         }
 
         func applyFilter(to webView: WKWebView) {
@@ -788,8 +859,8 @@ struct WebColumnView: NSViewRepresentable {
                 return
             }
 
-            let include = encodeCSV(filter.includeKeywords)
-            let exclude = encodeCSV(filter.excludeKeywords)
+            let include = JavaScriptEncoding.stringLiteral(filter.includeKeywords)
+            let exclude = JavaScriptEncoding.stringLiteral(filter.excludeKeywords)
             let hideReplies = filter.hideReplies ? "true" : "false"
             let hideReposts = filter.hideReposts ? "true" : "false"
 
@@ -1002,17 +1073,5 @@ struct WebColumnView: NSViewRepresentable {
             }
         }
 
-        private func encodeCSV(_ value: String?) -> String {
-            guard let value, !value.isEmpty else {
-                return "''"
-            }
-
-            let escaped = value
-                .replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "'", with: "\\'")
-                .replacingOccurrences(of: "\n", with: " ")
-
-            return "'\(escaped)'"
-        }
     }
 }

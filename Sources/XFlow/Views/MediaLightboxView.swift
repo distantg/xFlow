@@ -86,9 +86,12 @@ struct MediaLightboxView: View {
 
     @ViewBuilder
     private var content: some View {
-        if request.kind == .image, isHTTPURL(request.url) {
+        if request.kind == .image, TrustedURLPolicy.isTrustedImageMediaURL(request.url) {
+            let preferredURL = request.mediaURL.flatMap {
+                TrustedURLPolicy.isTrustedImageMediaURL($0) ? $0 : nil
+            } ?? request.url
             imageContent(
-                preferredURL: request.mediaURL ?? request.url,
+                preferredURL: preferredURL,
                 fallbackURL: request.url
             )
         } else if request.kind == .video {
@@ -146,7 +149,7 @@ struct MediaLightboxView: View {
     }
 
     private var inlineVideoSourceURL: URL? {
-        if let mediaURL = request.mediaURL, isHTTPURL(mediaURL) {
+        if let mediaURL = request.mediaURL, TrustedURLPolicy.isTrustedVideoMediaURL(mediaURL) {
             return mediaURL
         }
         if isDirectMediaURL(request.url) {
@@ -156,7 +159,7 @@ struct MediaLightboxView: View {
     }
 
     private func videoSeekScript(startTime: Double) -> String {
-        let clamped = max(0, startTime)
+        let clamped = startTime.isFinite ? min(max(0, startTime), 24 * 60 * 60) : 0
         return """
         (function() {
           const target = \(clamped);
@@ -184,29 +187,12 @@ struct MediaLightboxView: View {
         """
     }
 
-    private func isHTTPURL(_ url: URL) -> Bool {
-        guard let scheme = url.scheme?.lowercased() else {
-            return false
-        }
-        return scheme == "http" || scheme == "https"
-    }
-
     private func isLikelyXRoute(_ url: URL) -> Bool {
-        guard let host = url.host?.lowercased() else {
-            return false
-        }
-        return host.contains("x.com") || host.contains("twitter.com")
+        TrustedURLPolicy.isTrustedXPage(url)
     }
 
     private func isDirectMediaURL(_ url: URL) -> Bool {
-        guard isHTTPURL(url), let host = url.host?.lowercased() else {
-            return false
-        }
-        if host.contains("video.twimg.com") || host.contains("pbs.twimg.com") {
-            return true
-        }
-        let path = url.path.lowercased()
-        return path.hasSuffix(".m3u8") || path.hasSuffix(".mp4") || path.hasSuffix(".mov")
+        TrustedURLPolicy.isTrustedVideoMediaURL(url)
     }
 }
 
@@ -267,7 +253,10 @@ private struct InlineVideoPlayerWebView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
         configuration.mediaTypesRequiringUserActionForPlayback = []
+        configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+        configuration.preferences.isFraudulentWebsiteWarningEnabled = true
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.setValue(false, forKey: "drawsBackground")
@@ -318,16 +307,15 @@ private struct InlineVideoPlayerWebView: NSViewRepresentable {
     }
 
     private var html: String {
-        let escapedURL = videoURL.absoluteString
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "\\'")
-        let clamped = max(0, startTime)
+        let escapedURL = HTMLEncoding.attributeValue(videoURL.absoluteString)
+        let clamped = startTime.isFinite ? min(max(0, startTime), 24 * 60 * 60) : 0
         return """
         <!doctype html>
         <html>
         <head>
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width,initial-scale=1" />
+          <meta http-equiv="Content-Security-Policy" content="default-src 'none'; media-src https://video.twimg.com; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'" />
           <style>
             html, body { margin:0; padding:0; width:100%; height:100%; background:#000; overflow:hidden; }
             #wrap { width:100%; height:100%; display:flex; align-items:center; justify-content:center; background:#000; }

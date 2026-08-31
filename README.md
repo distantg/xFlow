@@ -56,6 +56,13 @@ Manual checks show available updates immediately. Automatic background checks wa
 
 To update xFlow, download the newest DMG, drag `xFlow.app` into **Applications**, and choose **Replace** when Finder asks. Your accounts, login sessions, column layouts, and preferences are stored separately from the app bundle and should remain intact when replacing `xFlow.app`.
 
+## Security
+
+- Each X account uses a separate WebKit website-data store. Removing an account also removes its cookies and stored website data.
+- xFlow accepts native bridge messages only from the main `https://x.com` frame. External HTTPS links open in the default browser only after a user click.
+- Update and push requests use isolated, cookie-free sessions, reject redirects, and cap response sizes. The optional push relay uses separate sync and administrator credentials.
+- Release builds use the macOS Hardened Runtime. They are still ad-hoc signed and not notarized because the project does not currently use an Apple Developer account.
+
 ## Build From Source
 
 Requirements:

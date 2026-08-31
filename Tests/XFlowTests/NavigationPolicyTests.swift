@@ -1,25 +1,70 @@
+import WebKit
 import XCTest
 @testable import XFlow
 
 final class NavigationPolicyTests: XCTestCase {
+    typealias Disposition = WebColumnView.Coordinator.NavigationDisposition
+
     func testXLinksStayInXFlow() {
-        XCTAssertFalse(WebColumnView.Coordinator.shouldOpenExternally(URL(string: "https://x.com/home")!))
-        XCTAssertFalse(WebColumnView.Coordinator.shouldOpenExternally(URL(string: "https://www.x.com/i/bookmarks")!))
+        XCTAssertEqual(disposition("https://x.com/home", type: .other), .allowInWebView)
+        XCTAssertEqual(
+            disposition("https://www.x.com/i/bookmarks", type: .linkActivated),
+            .allowInWebView
+        )
     }
 
-    func testNonXLinksOpenExternally() {
-        XCTAssertTrue(WebColumnView.Coordinator.shouldOpenExternally(URL(string: "https://example.com/article")!))
-        XCTAssertTrue(WebColumnView.Coordinator.shouldOpenExternally(URL(string: "https://github.com/distantg/xFlow")!))
+    func testUserActivatedExternalHTTPSLinkOpensExternally() {
+        XCTAssertEqual(
+            disposition("https://example.com/article", type: .linkActivated),
+            .openExternally
+        )
     }
 
-    func testNonWebSchemesStayWithWebKitPolicy() {
-        XCTAssertFalse(WebColumnView.Coordinator.shouldOpenExternally(URL(string: "about:blank")!))
-        XCTAssertFalse(WebColumnView.Coordinator.shouldOpenExternally(URL(string: "blob:https://x.com/123")!))
+    func testUserActivatedExternalHTTPLinkOpensExternally() {
+        XCTAssertEqual(
+            disposition("http://example.com/article", type: .linkActivated),
+            .openExternally
+        )
     }
 
-    func testEmbeddedGoogleSignInButtonDoesNotOpenExternally() {
-        let url = URL(string: "https://accounts.google.com/gsi/button?theme=outline&client_id=abc.apps.googleusercontent.com")!
+    func testAutomaticExternalNavigationIsCancelled() {
+        XCTAssertEqual(disposition("https://example.com/tracker", type: .other), .cancel)
+        XCTAssertEqual(disposition("http://example.com/tracker", type: .other), .cancel)
+        XCTAssertEqual(
+            disposition("https://accounts.google.com/gsi/button", type: .other),
+            .cancel
+        )
+    }
 
-        XCTAssertFalse(WebColumnView.Coordinator.shouldOpenExternally(url))
+    func testSafeSubframesStayInsideWebKitWithoutLaunchingBrowser() {
+        XCTAssertEqual(
+            disposition(
+                "https://accounts.google.com/gsi/button",
+                isMainFrame: false,
+                type: .other
+            ),
+            .allowInWebView
+        )
+        XCTAssertEqual(
+            disposition("about:blank", isMainFrame: false, type: .other),
+            .allowInWebView
+        )
+    }
+
+    func testUnsafeTopLevelSchemesAreCancelled() {
+        XCTAssertEqual(disposition("file:///etc/passwd", type: .linkActivated), .cancel)
+        XCTAssertEqual(disposition("javascript:alert(1)", type: .linkActivated), .cancel)
+    }
+
+    private func disposition(
+        _ rawURL: String,
+        isMainFrame: Bool = true,
+        type: WKNavigationType
+    ) -> Disposition {
+        WebColumnView.Coordinator.navigationDisposition(
+            for: URL(string: rawURL)!,
+            isMainFrame: isMainFrame,
+            navigationType: type
+        )
     }
 }

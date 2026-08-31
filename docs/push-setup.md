@@ -10,11 +10,15 @@ To receive notifications while the app is closed, you must complete backend + si
 
 ## 1. Start the relay backend
 
-The repo includes a starter relay:
+The repo includes a starter relay. Generate separate strong tokens and keep them out of source control:
 
 ```bash
+export XFLOW_PUSH_RELAY_TOKEN="$(openssl rand -hex 32)"
+export XFLOW_PUSH_ADMIN_TOKEN="$(openssl rand -hex 32)"
 node ./scripts/push_relay.mjs
 ```
+
+The relay binds to `127.0.0.1` by default and refuses to start without separate sync and admin tokens of at least 32 characters. Put a production relay behind HTTPS and a properly configured reverse proxy; do not expose its plain HTTP listener directly to the internet. The starter relay expires device mappings after 90 days without a sync.
 
 Endpoints:
 
@@ -40,8 +44,12 @@ defaults write com.distantg.xflow xflow.pushBackendURL -string "http://localhost
 Or run the app with environment variable:
 
 ```bash
-XFLOW_PUSH_BACKEND_URL="http://localhost:8787/v1/devices/sync" swift run XFlow
+XFLOW_PUSH_BACKEND_URL="http://localhost:8787/v1/devices/sync" \
+XFLOW_PUSH_BACKEND_TOKEN="$XFLOW_PUSH_RELAY_TOKEN" \
+swift run XFlow
 ```
+
+The app requires `XFLOW_PUSH_BACKEND_TOKEN` before it sends a device token or account mapping. Set it to the sync token, never the admin token. Remote backend URLs must use HTTPS; plain HTTP is accepted only for loopback development.
 
 ## 3. Build with push-capable signing
 
@@ -61,6 +69,7 @@ After signing and launching xFlow with at least two logged-in accounts, send a t
 
 ```bash
 curl -X POST http://localhost:8787/v1/push/test \
+  -H "Authorization: Bearer $XFLOW_PUSH_ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"accountID":"<ACCOUNT_UUID>","title":"Test","body":"Account scoped notification"}'
 ```

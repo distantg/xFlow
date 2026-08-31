@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 @MainActor
@@ -167,9 +168,14 @@ final class DeckStore: ObservableObject {
             focusOrAddColumn(type: .bookmarks, defaultWidth: 360)
         case .creatorStudio:
             focusOrAddListsColumn()
+        case .articles:
+            if let url = action.url(forHandle: activeAccount?.handle),
+               TrustedURLPolicy.isTrustedExternalWebURL(url) {
+                NSWorkspace.shared.open(url)
+            }
         case .compose:
             presentComposer()
-        case .articles, .grok, .premium, .profile, .more:
+        case .grok, .premium, .profile, .more:
             presentQuickAction(action)
         }
     }
@@ -197,7 +203,6 @@ final class DeckStore: ObservableObject {
         profileMetaRetryCount.removeValue(forKey: accountID)
         columnsByAccount.removeValue(forKey: accountID.uuidString)
         persistColumnsByAccount()
-        WebSessionPool.shared.purgeAccount(accountID)
 
         if presentedLoginAccountID == accountID {
             presentedLoginAccountID = nil
@@ -210,6 +215,11 @@ final class DeckStore: ObservableObject {
             loadColumnsForActiveAccount()
             refreshAllColumns()
             refreshAuthenticationState(for: fallbackID, shouldPromptIfNeeded: true)
+        }
+
+        // Let SwiftUI dismantle any visible web views before deleting the persistent WebKit store.
+        DispatchQueue.main.async {
+            WebSessionPool.shared.purgeAccount(accountID)
         }
     }
 
@@ -323,7 +333,7 @@ final class DeckStore: ObservableObject {
             .replacingOccurrences(of: "@", with: "")
             .lowercased()
 
-        guard !normalized.isEmpty else {
+        guard TrustedURLPolicy.isValidXHandle(normalized) else {
             return
         }
 
@@ -342,10 +352,11 @@ final class DeckStore: ObservableObject {
             return
         }
 
-        let raw = imageURL.absoluteString
-        guard raw.hasPrefix("http") else {
+        guard TrustedURLPolicy.isTrustedProfileImageURL(imageURL) else {
             return
         }
+
+        let raw = imageURL.absoluteString
 
         updateAccount(accountID) { account in
             account.profileImageURL = raw
@@ -634,11 +645,7 @@ final class DeckStore: ObservableObject {
     }
 
     private static func extractHandle(from url: URL?) -> String? {
-        guard let url else {
-            return nil
-        }
-
-        guard let host = url.host?.lowercased(), host == "x.com" || host == "www.x.com" else {
+        guard let url, TrustedURLPolicy.isTrustedXPage(url) else {
             return nil
         }
 
@@ -664,9 +671,7 @@ final class DeckStore: ObservableObject {
     }
 
     private static func extractListRoute(from url: URL?) -> (parameter: String, titleHint: String?)? {
-        guard let url,
-              let host = url.host?.lowercased(),
-              host == "x.com" || host == "www.x.com" else {
+        guard let url, TrustedURLPolicy.isTrustedXListURL(url) else {
             return nil
         }
 
