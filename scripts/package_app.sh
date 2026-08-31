@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 APP_NAME="xFlow"
 BIN_NAME="XFlow"
-BUNDLE_ID="com.distantg.xflow"
+BUNDLE_ID="${XFLOW_BUNDLE_ID:-com.distantg.xflow}"
 TARGET_ARCH="${XFLOW_ARCH:-arm64}"
 case "$TARGET_ARCH" in
   arm64)
@@ -23,8 +23,21 @@ APP_DIR="$ROOT_DIR/dist/${APP_DIR_NAME}"
 BUILD_DIR="${XFLOW_BUILD_DIR:-$ROOT_DIR/.build-xflow}"
 BIN_PATH="$BUILD_DIR/${TARGET_ARCH}-apple-macosx/release/${BIN_NAME}"
 APP_ICON_PNG="$ROOT_DIR/AppIcon.png"
+BASE_ENTITLEMENTS_FILE="$ROOT_DIR/Config/xFlow.entitlements"
+CONTAINER_MIGRATION_FILE="$ROOT_DIR/Resources/container-migration.plist"
 CODESIGN_IDENTITY="${XFLOW_CODESIGN_IDENTITY:-"-"}"
 APS_ENVIRONMENT="${XFLOW_APS_ENVIRONMENT:-development}"
+
+if [[ ! "$BUNDLE_ID" =~ ^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$ ]]; then
+  echo "XFLOW_BUNDLE_ID must be a valid reverse-DNS bundle identifier." >&2
+  exit 2
+fi
+for required_file in "$BASE_ENTITLEMENTS_FILE" "$CONTAINER_MIGRATION_FILE"; do
+  if [[ ! -f "$required_file" || -L "$required_file" ]]; then
+    echo "Required packaging file is missing or unsafe: $required_file" >&2
+    exit 2
+  fi
+done
 
 if [[ "$APP_DIR_NAME" == /* || "$APP_DIR_NAME" == *".."* || "$APP_DIR_NAME" == *$'\n'* || "$APP_DIR_NAME" == *$'\r'* ]]; then
   echo "XFLOW_APP_DIR_NAME must stay inside dist and cannot contain traversal components." >&2
@@ -102,6 +115,7 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 PLIST
 
 cp "$BIN_PATH" "$APP_DIR/Contents/MacOS/$APP_NAME"
+strip -S "$APP_DIR/Contents/MacOS/$APP_NAME"
 chmod +x "$APP_DIR/Contents/MacOS/$APP_NAME"
 printf 'APPL????' > "$APP_DIR/Contents/PkgInfo"
 
@@ -127,24 +141,26 @@ else
   echo "No valid AppIcon.png found at $APP_ICON_PNG (skipping custom icon)."
 fi
 
+cp "$CONTAINER_MIGRATION_FILE" "$APP_DIR/Contents/Resources/container-migration.plist"
+
 xattr -cr "$APP_DIR" 2>/dev/null || true
 
-if [[ "$CODESIGN_IDENTITY" == "-" ]]; then
-  codesign --force --deep --options runtime --sign - "$APP_DIR"
-else
+ENTITLEMENTS_FILE="$BASE_ENTITLEMENTS_FILE"
+if [[ "$CODESIGN_IDENTITY" != "-" ]]; then
   ENTITLEMENTS_FILE="$ROOT_DIR/dist/xFlow.entitlements"
-  cat > "$ENTITLEMENTS_FILE" <<ENTITLEMENTS
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>com.apple.developer.aps-environment</key>
-  <string>${APS_ENVIRONMENT}</string>
-</dict>
-</plist>
-ENTITLEMENTS
-
-  codesign --force --deep --options runtime --entitlements "$ENTITLEMENTS_FILE" --sign "$CODESIGN_IDENTITY" "$APP_DIR"
+  cp "$BASE_ENTITLEMENTS_FILE" "$ENTITLEMENTS_FILE"
+  /usr/libexec/PlistBuddy \
+    -c "Add :com.apple.developer.aps-environment string $APS_ENVIRONMENT" \
+    "$ENTITLEMENTS_FILE"
 fi
+
+codesign \
+  --force \
+  --deep \
+  --options runtime \
+  --entitlements "$ENTITLEMENTS_FILE" \
+  --sign "$CODESIGN_IDENTITY" \
+  "$APP_DIR"
+codesign --verify --deep --strict "$APP_DIR"
 
 echo "Created: $APP_DIR"
