@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-APP_NAME="xFlow"
+APP_NAME="Mosaic"
 TARGET_ARCH="${XFLOW_ARCH:-arm64}"
 
 case "$TARGET_ARCH" in
@@ -42,37 +42,37 @@ cp -R "$APP_DIR" "$STAGING_DIR/${APP_NAME}.app"
 ln -s /Applications "$STAGING_DIR/Applications"
 
 cat > "$INSTRUCTIONS_FILE" <<'TEXT'
-xFlow installation instructions
+Mosaic installation instructions
 
 1. Open the downloaded .dmg file.
-2. Drag xFlow.app into the Applications shortcut.
+2. Drag Mosaic.app into the Applications shortcut.
 3. Open your Applications folder.
-4. Double-click xFlow.app.
+4. Double-click Mosaic.app.
 
-Because xFlow is currently distributed without Apple notarization, macOS may show this warning:
+Because Mosaic is currently distributed without Apple notarization, macOS may show this warning:
 
-"Apple could not verify “xFlow” is free of malware that may harm your Mac or compromise your privacy."
+"Apple could not verify “Mosaic” is free of malware that may harm your Mac or compromise your privacy."
 
 If you see that warning, do this:
 
 1. Open Apple menu > System Settings.
 2. Click Privacy & Security in the sidebar.
 3. Scroll down to the Security section.
-4. Click Open Anyway for xFlow.
+4. Click Open Anyway for Mosaic.
 5. Enter your Mac login password if prompted.
 6. Click OK.
 
-xFlow should open after that.
+Mosaic should open after that.
 
-Important: the Open Anyway button is only available for about one hour after you first try to open the app. If you do not see it, try opening xFlow.app again, then return to Privacy & Security.
+Important: the Open Anyway button is only available for about one hour after you first try to open the app. If you do not see it, try opening Mosaic.app again, then return to Privacy & Security.
 
-Updating xFlow:
+Updating Mosaic:
 
-To update, download the newest DMG, drag xFlow.app into Applications, and choose Replace when Finder asks. Your accounts, login sessions, column layouts, and preferences are stored separately from the app and should remain intact when replacing xFlow.app.
+To update, download the newest DMG, drag Mosaic.app into Applications, and choose Replace when Finder asks. Your accounts, login sessions, column layouts, and preferences are stored separately from the app and should remain intact when replacing Mosaic.app.
 
 Why this happens:
 
-xFlow is not notarized because it is currently distributed without an Apple Developer account. macOS shows this warning for non-notarized apps. This does not mean the app is malware, but you should only install apps from sources you trust.
+Mosaic is not notarized because it is currently distributed without an Apple Developer account. macOS shows this warning for non-notarized apps. This does not mean the app is malware, but you should only install apps from sources you trust.
 TEXT
 
 BACKGROUND_SCRIPT="$(mktemp /tmp/xflow-dmg-background.XXXXXX.swift)"
@@ -109,8 +109,8 @@ let subtitleAttributes: [NSAttributedString.Key: Any] = [
     .paragraphStyle: titleStyle
 ]
 
-"Install xFlow".draw(in: NSRect(x: 0, y: 324, width: size.width, height: 36), withAttributes: titleAttributes)
-"Drag xFlow.app into Applications".draw(in: NSRect(x: 0, y: 294, width: size.width, height: 24), withAttributes: subtitleAttributes)
+"Install Mosaic".draw(in: NSRect(x: 0, y: 324, width: size.width, height: 36), withAttributes: titleAttributes)
+"Drag Mosaic.app into Applications".draw(in: NSRect(x: 0, y: 294, width: size.width, height: 24), withAttributes: subtitleAttributes)
 
 func roundedPanel(_ rect: NSRect) {
     let path = NSBezierPath(roundedRect: rect, xRadius: 28, yRadius: 28)
@@ -168,7 +168,7 @@ tell application "Finder"
     set arrangement of icon view options of dmgWindow to not arranged
     set icon size of icon view options of dmgWindow to 88
     set background picture of icon view options of dmgWindow to backgroundImage
-    set position of item "xFlow.app" of dmgFolder to {170, 170}
+    set position of item "Mosaic.app" of dmgFolder to {170, 170}
     set position of item "Applications" of dmgFolder to {492, 170}
     set position of item "Click here for installation instructions.txt" of dmgFolder to {330, 236}
     close dmgWindow

@@ -369,7 +369,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       const title = sanitizedText(payload.title, "New X Notification", 80);
-      const body = sanitizedText(payload.body, "Open xFlow to view account activity.", 240);
+      const body = sanitizedText(payload.body, "Open Mosaic to view account activity.", 240);
 
       const apnsPayload = {
         aps: {

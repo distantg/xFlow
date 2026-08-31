@@ -6,7 +6,7 @@ struct XFlowApp: App {
     @StateObject private var store = DeckStore()
 
     var body: some Scene {
-        WindowGroup("xFlow") {
+        WindowGroup("Mosaic") {
             MainDeckView()
                 .environmentObject(store)
                 .preferredColorScheme(store.appearanceMode.preferredColorScheme)

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-APP_NAME="xFlow"
+APP_NAME="Mosaic"
 BIN_NAME="XFlow"
 BUNDLE_ID="${XFLOW_BUNDLE_ID:-com.distantg.xflow}"
 TARGET_ARCH="${XFLOW_ARCH:-arm64}"
@@ -97,9 +97,9 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.3.14</string>
+    <string>1.4.0</string>
     <key>CFBundleVersion</key>
-    <string>20</string>
+    <string>22</string>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.social-networking</string>
     <key>LSMinimumSystemVersion</key>

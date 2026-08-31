@@ -275,13 +275,13 @@ final class UpdateManager: ObservableObject {
                 alert = UpdateAlert(
                     kind: .upToDate,
                     title: "You're up to date",
-                    message: "xFlow \(installedVersion) is the latest available version.",
+                    message: "Mosaic \(installedVersion) is the latest available version.",
                     downloadURL: nil
                 )
             case .available(let update), .deferred(let update):
                 alert = UpdateAlert(
                     kind: .available,
-                    title: "xFlow \(update.latestVersion) is available",
+                    title: "Mosaic \(update.latestVersion) is available",
                     message: update.releaseNotes.isEmpty ? "A new version is ready on GitHub." : update.releaseNotes,
                     downloadURL: update.downloadURL
                 )
@@ -318,7 +318,7 @@ final class UpdateManager: ObservableObject {
             defaults.set(update.latestVersion, forKey: lastAutomaticNotificationKey)
             alert = UpdateAlert(
                 kind: .available,
-                title: "xFlow \(update.latestVersion) is available",
+                title: "Mosaic \(update.latestVersion) is available",
                 message: update.releaseNotes.isEmpty ? "A new version is ready on GitHub." : update.releaseNotes,
                 downloadURL: update.downloadURL
             )
