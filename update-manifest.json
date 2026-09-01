@@ -1,7 +1,7 @@
 {
-  "latestVersion": "1.4.0",
-  "publishedAt": "2026-08-31T09:08:49Z",
-  "downloadURL": "https://github.com/distantg/xFlow/releases/tag/v1.4.0",
-  "releaseNotes": "Renames xFlow to Mosaic, adds the new Mosaic app icon, and improves video-control reliability.",
+  "latestVersion": "1.4.8",
+  "publishedAt": "2026-09-01T00:16:05Z",
+  "downloadURL": "https://github.com/distantg/xFlow/releases/tag/v1.4.8",
+  "releaseNotes": "Refines the Mosaic app icon to match standard macOS Dock sizing.",
   "minimumSupportedVersion": "1.0"
 }
