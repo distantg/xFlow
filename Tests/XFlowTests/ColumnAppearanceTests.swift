@@ -70,6 +70,24 @@ final class ColumnAppearanceTests: XCTestCase {
         )
     }
 
+    func testIntegratedThemeUsesContinuousTransparentCanvasAndStableXRoles() {
+        let script = WebColumnView.Coordinator.integratedColumnThemeScript
+
+        XCTAssertTrue(script.contains("main[role=\"main\"]"))
+        XCTAssertTrue(script.contains("[data-testid=\"primaryColumn\"]"))
+        XCTAssertTrue(script.contains("[data-testid=\"primaryColumn\"] *,"))
+        XCTAssertTrue(script.contains("[data-testid=\"primaryColumn\"] *::before,"))
+        XCTAssertTrue(script.contains("[data-testid=\"primaryColumn\"] *::after"))
+        XCTAssertTrue(script.contains("[data-testid=\"cellInnerDiv\"]"))
+        XCTAssertTrue(script.contains("background: transparent !important"))
+        XCTAssertTrue(script.contains("background-color: transparent !important"))
+        XCTAssertTrue(script.contains("box-shadow: inset 0 -1px 0 var(--mosaic-hairline) !important"))
+        XCTAssertFalse(script.contains("[data-testid=\"cellInnerDiv\"]::before"))
+        XCTAssertFalse(script.contains("inset: 4px 6px"))
+        XCTAssertTrue(script.contains("[role=\"tab\"][aria-selected=\"true\"]::after"))
+        XCTAssertTrue(script.contains("prefers-reduced-transparency"))
+    }
+
     private func makeDefaults() throws -> UserDefaults {
         let suiteName = "ColumnAppearanceTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

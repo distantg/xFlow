@@ -275,9 +275,28 @@ struct WebColumnView: NSViewRepresentable {
         webView.navigationDelegate = coordinator
         webView.uiDelegate = coordinator
         webView.underPageBackgroundColor = .clear
+        setWebKitBoolean(
+            true,
+            selectorName: "_setDrawsTransparentBackground:",
+            on: webView
+        )
+        setWebKitBoolean(
+            false,
+            selectorName: "_setDrawsBackground:",
+            on: webView
+        )
+        let opaqueSetter = NSSelectorFromString("setOpaque:")
+        if webView.responds(to: opaqueSetter) {
+            webView.setValue(false, forKey: "opaque")
+        }
+        webView.wantsLayer = true
+        webView.layer?.backgroundColor = NSColor.clear.cgColor
+        webView.layer?.isOpaque = false
         webView.allowsBackForwardNavigationGestures = false
         webView.routeHorizontalScrollToParent = routeHorizontalScrollToParent
         if let nativeScrollView = webView.subviews.compactMap({ $0 as? NSScrollView }).first {
+            nativeScrollView.drawsBackground = false
+            nativeScrollView.backgroundColor = .clear
             nativeScrollView.hasHorizontalScroller = false
             nativeScrollView.horizontalScrollElasticity = .none
         }
@@ -289,6 +308,20 @@ struct WebColumnView: NSViewRepresentable {
 
         webView.load(URLRequest(url: url))
         return webView
+    }
+
+    private func setWebKitBoolean(
+        _ value: Bool,
+        selectorName: String,
+        on webView: WKWebView
+    ) {
+        let selector = NSSelectorFromString(selectorName)
+        guard webView.responds(to: selector),
+              let implementation = webView.method(for: selector) else { return }
+
+        typealias BooleanSetter = @convention(c) (AnyObject, Selector, Bool) -> Void
+        let setter = unsafeBitCast(implementation, to: BooleanSetter.self)
+        setter(webView, selector, value)
     }
 
     func updateNSView(_ hostView: DeckWebColumnHostView, context: Context) {
@@ -675,38 +708,57 @@ struct WebColumnView: NSViewRepresentable {
           style.textContent = `
             :root {
               --mosaic-accent: rgb(231, 216, 190);
+              --mosaic-accent-soft: rgba(231, 216, 190, 0.16);
+              --mosaic-accent-line: rgba(231, 216, 190, 0.34);
               --mosaic-ink: rgba(242, 245, 249, 0.94);
               --mosaic-secondary: rgba(222, 229, 238, 0.58);
-              --mosaic-surface: rgba(24, 30, 40, 0.64);
-              --mosaic-surface-hover: rgba(53, 63, 76, 0.58);
-              --mosaic-inset: rgba(4, 9, 16, 0.22);
-              --mosaic-tab-surface: rgba(35, 43, 55, 0.52);
-              --mosaic-hairline: rgba(226, 238, 249, 0.075);
+              --mosaic-surface: rgba(18, 24, 33, 0.1);
+              --mosaic-surface-hover: rgba(202, 220, 235, 0.085);
+              --mosaic-inset: rgba(3, 8, 15, 0.2);
+              --mosaic-tab-surface: rgba(18, 24, 33, 0.34);
+              --mosaic-float-surface: rgba(22, 29, 39, 0.76);
+              --mosaic-media-surface: rgba(3, 8, 15, 0.18);
+              --mosaic-hairline: rgba(226, 238, 249, 0.09);
+              --mosaic-shadow: rgba(0, 0, 0, 0.2);
               color-scheme: dark;
             }
 
-            html, body, #react-root, [data-testid="react-root"] {
-              background: transparent !important;
+            html,
+            body,
+            #react-root,
+            [data-testid="react-root"],
+            main[role="main"],
+            [data-testid="primaryColumn"],
+            [data-testid="primaryColumn"] > div,
+            [data-testid="primaryColumn"] > div > div {
+              background-color: transparent !important;
+              background-image: none !important;
               font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif !important;
             }
 
             [data-testid="primaryColumn"] {
               color: var(--mosaic-ink) !important;
-              background: var(--mosaic-surface) !important;
-              backdrop-filter: blur(26px) saturate(1.18) !important;
-              box-shadow: inset 0 0 0 1px var(--mosaic-hairline) !important;
+              background: transparent !important;
+              backdrop-filter: none !important;
+              box-shadow: none !important;
+            }
+
+            [data-testid="primaryColumn"] *,
+            [data-testid="primaryColumn"] *::before,
+            [data-testid="primaryColumn"] *::after {
+              background-color: transparent !important;
             }
 
             [data-testid="primaryColumn"] [data-testid="cellInnerDiv"] {
               border-color: transparent !important;
               background: transparent !important;
-              box-shadow: none !important;
-              transition: background-color 130ms ease-out, filter 130ms ease-out !important;
+              box-shadow: inset 0 -1px 0 var(--mosaic-hairline) !important;
+              transition: background-color 140ms ease-out, filter 140ms ease-out !important;
             }
 
             [data-testid="primaryColumn"] [data-testid="cellInnerDiv"]:hover {
               background: var(--mosaic-surface-hover) !important;
-              filter: brightness(1.035);
+              filter: brightness(1.025) saturate(1.035);
             }
 
             [data-testid="primaryColumn"] article,
@@ -716,7 +768,7 @@ struct WebColumnView: NSViewRepresentable {
 
             [data-testid="primaryColumn"] [role="separator"] {
               background-color: var(--mosaic-hairline) !important;
-              opacity: 0.18 !important;
+              opacity: 0.24 !important;
             }
 
             [data-testid="primaryColumn"] a,
@@ -731,10 +783,20 @@ struct WebColumnView: NSViewRepresentable {
               color: var(--mosaic-accent) !important;
             }
 
+            [data-testid="primaryColumn"] [data-testid="User-Name"] {
+              font-family: -apple-system, BlinkMacSystemFont, "SF Pro Rounded", "SF Pro Text", sans-serif !important;
+              letter-spacing: -0.01em !important;
+            }
+
+            [data-testid="primaryColumn"] [data-testid="tweetText"] {
+              line-height: 1.38 !important;
+              letter-spacing: -0.006em !important;
+            }
+
             [data-testid="primaryColumn"] button,
             [data-testid="primaryColumn"] [role="button"] {
               -webkit-font-smoothing: antialiased !important;
-              transition: filter 120ms ease-out, transform 120ms ease-out !important;
+              transition: background-color 120ms ease-out, box-shadow 120ms ease-out, filter 120ms ease-out, transform 120ms ease-out !important;
             }
 
             [data-testid="primaryColumn"] button:hover,
@@ -742,24 +804,103 @@ struct WebColumnView: NSViewRepresentable {
               filter: brightness(1.09);
             }
 
+            [data-testid="primaryColumn"] [data-testid="tweetButton"],
+            [data-testid="primaryColumn"] [data-testid="tweetButtonInline"] {
+              color: var(--mosaic-ink) !important;
+              background: var(--mosaic-accent-soft) !important;
+              border: 1px solid var(--mosaic-accent-line) !important;
+              box-shadow: 0 5px 18px var(--mosaic-shadow) !important;
+              backdrop-filter: blur(16px) saturate(1.2) !important;
+            }
+
+            [data-testid="primaryColumn"] [data-testid="tweetButton"]:hover,
+            [data-testid="primaryColumn"] [data-testid="tweetButtonInline"]:hover {
+              background: rgba(231, 216, 190, 0.24) !important;
+              transform: translateY(-1px) !important;
+            }
+
             [data-testid="primaryColumn"] input,
             [data-testid="primaryColumn"] textarea,
             [data-testid="primaryColumn"] [role="textbox"] {
               border-radius: 12px !important;
               background-color: var(--mosaic-inset) !important;
-              box-shadow: inset 0 0 0 1px var(--mosaic-hairline) !important;
-              backdrop-filter: blur(12px) saturate(1.08) !important;
+              box-shadow: inset 0 0 0 1px var(--mosaic-hairline), 0 4px 14px rgba(0, 0, 0, 0.08) !important;
+              backdrop-filter: blur(16px) saturate(1.14) !important;
+            }
+
+            [data-testid="primaryColumn"] input:focus,
+            [data-testid="primaryColumn"] textarea:focus,
+            [data-testid="primaryColumn"] [role="textbox"]:focus {
+              box-shadow: inset 0 0 0 1px var(--mosaic-accent-line), 0 0 0 3px var(--mosaic-accent-soft) !important;
             }
 
             [data-testid="primaryColumn"] [role="tablist"] {
-              backdrop-filter: blur(18px) saturate(1.12) !important;
+              backdrop-filter: blur(22px) saturate(1.24) !important;
               background: var(--mosaic-tab-surface) !important;
               box-shadow: inset 0 -1px 0 var(--mosaic-hairline) !important;
             }
 
             [data-testid="primaryColumn"] [role="tab"][aria-selected="true"] {
+              position: relative !important;
               font-weight: 700 !important;
               color: var(--mosaic-accent) !important;
+            }
+
+            [data-testid="primaryColumn"] [role="tab"][aria-selected="true"]::after {
+              content: "";
+              position: absolute;
+              left: 28%;
+              right: 28%;
+              bottom: 2px;
+              height: 3px;
+              border-radius: 999px;
+              background: var(--mosaic-accent);
+              box-shadow: 0 0 10px var(--mosaic-accent-soft);
+              pointer-events: none;
+            }
+
+            [data-testid="primaryColumn"] article [role="group"] button,
+            [data-testid="primaryColumn"] article [role="group"] [role="button"] {
+              border-radius: 999px !important;
+            }
+
+            [data-testid="primaryColumn"] article [role="group"] button:hover,
+            [data-testid="primaryColumn"] article [role="group"] [role="button"]:hover {
+              background-color: var(--mosaic-surface-hover) !important;
+              box-shadow: 0 5px 14px rgba(0, 0, 0, 0.08) !important;
+              transform: translateY(-1px) !important;
+            }
+
+            [data-testid="primaryColumn"] [data-testid="card.wrapper"],
+            [data-testid="primaryColumn"] [data-testid="tweetPhoto"],
+            [data-testid="primaryColumn"] video {
+              border-radius: 14px !important;
+              background-color: var(--mosaic-media-surface) !important;
+              box-shadow: inset 0 0 0 1px var(--mosaic-hairline), 0 8px 24px rgba(0, 0, 0, 0.1) !important;
+            }
+
+            [data-testid="primaryColumn"] [data-testid="card.wrapper"] {
+              border-color: transparent !important;
+              overflow: hidden !important;
+            }
+
+            [role="menu"],
+            [data-testid="Dropdown"],
+            [data-testid="HoverCard"] {
+              background: var(--mosaic-float-surface) !important;
+              border: 1px solid var(--mosaic-hairline) !important;
+              border-radius: 15px !important;
+              box-shadow: 0 18px 48px var(--mosaic-shadow) !important;
+              backdrop-filter: blur(28px) saturate(1.24) !important;
+            }
+
+            [data-testid="primaryColumn"] a:focus-visible,
+            [data-testid="primaryColumn"] button:focus-visible,
+            [data-testid="primaryColumn"] [role="button"]:focus-visible,
+            [data-testid="primaryColumn"] input:focus-visible,
+            [data-testid="primaryColumn"] textarea:focus-visible {
+              outline: 2px solid var(--mosaic-accent-line) !important;
+              outline-offset: 2px !important;
             }
 
             ::selection {
@@ -769,7 +910,7 @@ struct WebColumnView: NSViewRepresentable {
             ::-webkit-scrollbar { width: 10px; height: 10px; }
             ::-webkit-scrollbar-track { background: transparent; }
             ::-webkit-scrollbar-thumb {
-              background: rgba(210, 225, 238, 0.2);
+              background: rgba(210, 225, 238, 0.16);
               border: 3px solid transparent;
               border-radius: 999px;
               background-clip: padding-box;
@@ -783,20 +924,41 @@ struct WebColumnView: NSViewRepresentable {
             @media (prefers-color-scheme: light) {
               :root {
                 --mosaic-accent: rgb(113, 94, 65);
+                --mosaic-accent-soft: rgba(113, 94, 65, 0.12);
+                --mosaic-accent-line: rgba(113, 94, 65, 0.28);
                 --mosaic-ink: rgba(18, 24, 31, 0.9);
                 --mosaic-secondary: rgba(30, 40, 52, 0.56);
-                --mosaic-surface: rgba(235, 244, 249, 0.64);
-                --mosaic-surface-hover: rgba(255, 255, 252, 0.72);
-                --mosaic-inset: rgba(152, 178, 196, 0.16);
-                --mosaic-tab-surface: rgba(244, 249, 251, 0.56);
-                --mosaic-hairline: rgba(35, 67, 88, 0.065);
+                --mosaic-surface: rgba(244, 249, 252, 0.08);
+                --mosaic-surface-hover: rgba(255, 255, 252, 0.34);
+                --mosaic-inset: rgba(117, 148, 170, 0.11);
+                --mosaic-tab-surface: rgba(247, 251, 252, 0.38);
+                --mosaic-float-surface: rgba(244, 249, 251, 0.78);
+                --mosaic-media-surface: rgba(226, 237, 244, 0.14);
+                --mosaic-hairline: rgba(35, 67, 88, 0.085);
+                --mosaic-shadow: rgba(31, 53, 67, 0.12);
                 color-scheme: light;
+              }
+
+              [data-testid="primaryColumn"] [data-testid="tweetButton"]:hover,
+              [data-testid="primaryColumn"] [data-testid="tweetButtonInline"]:hover {
+                background: rgba(113, 94, 65, 0.18) !important;
               }
             }
 
             @media (prefers-reduced-transparency: reduce) {
+              :root {
+                --mosaic-surface: rgba(24, 30, 40, 0.94);
+                --mosaic-surface-hover: rgba(43, 52, 64, 0.96);
+                --mosaic-inset: rgba(8, 13, 20, 0.94);
+                --mosaic-tab-surface: rgba(27, 34, 44, 0.97);
+                --mosaic-float-surface: rgba(27, 34, 44, 0.98);
+              }
+
               [data-testid="primaryColumn"],
-              [data-testid="primaryColumn"] [role="tablist"] {
+              [data-testid="primaryColumn"] [role="tablist"],
+              [role="menu"],
+              [data-testid="Dropdown"],
+              [data-testid="HoverCard"] {
                 backdrop-filter: none !important;
               }
             }
