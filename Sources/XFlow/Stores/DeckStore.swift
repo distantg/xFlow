@@ -30,11 +30,18 @@ final class DeckStore: ObservableObject {
         }
     }
 
+    @Published var columnAppearanceMode: ColumnAppearanceMode {
+        didSet {
+            ColumnAppearancePreference.save(columnAppearanceMode, to: defaults)
+        }
+    }
+
     @Published var presentedLoginAccountID: UUID?
     @Published var quickPanelDestination: QuickPanelDestination?
     @Published var scrollTargetColumnID: UUID?
 
     @Published var refreshSignal = UUID()
+    @Published private(set) var layoutResetSignal = UUID()
     @Published var isAddColumnSheetPresented = false
     @Published var isComposerSheetPresented = false
 
@@ -84,6 +91,8 @@ final class DeckStore: ObservableObject {
         } else {
             appearanceMode = .auto
         }
+
+        columnAppearanceMode = ColumnAppearancePreference.load(from: defaults)
 
         columnsByAccount = Self.loadColumnsByAccount(from: defaults, key: columnsByAccountStorageKey)
             ?? Self.loadColumnsByAccount(from: defaults, key: legacyColumnsByAccountStorageKey)
@@ -135,6 +144,10 @@ final class DeckStore: ObservableObject {
 
     func setAppearanceMode(_ mode: AppAppearanceMode) {
         appearanceMode = mode
+    }
+
+    func setColumnAppearanceMode(_ mode: ColumnAppearanceMode) {
+        columnAppearanceMode = mode
     }
 
     func presentQuickAction(_ action: XSidebarAction) {
@@ -460,6 +473,7 @@ final class DeckStore: ObservableObject {
     }
 
     func resetToStarterColumns() {
+        layoutResetSignal = UUID()
         columns = DeckColumn.starterColumns
         refreshAllColumns()
     }

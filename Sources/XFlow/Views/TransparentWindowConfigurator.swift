@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 struct TransparentWindowConfigurator: NSViewRepresentable {
-    private let sidebarWidth: CGFloat = 96
+    private let sidebarWidth: CGFloat = 82
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView(frame: .zero)

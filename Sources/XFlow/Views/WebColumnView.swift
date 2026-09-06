@@ -197,6 +197,7 @@ struct WebColumnView: NSViewRepresentable {
     let refreshKey: String
     let accountID: UUID
     let filter: ColumnFilter
+    var columnAppearanceMode: ColumnAppearanceMode = .originalX
     var onNavigation: ((URL?) -> Void)? = nil
     var onDetectedHandle: ((String) -> Void)? = nil
     var onDetectedProfileImage: ((URL?) -> Void)? = nil
@@ -221,6 +222,7 @@ struct WebColumnView: NSViewRepresentable {
             onPageTitle: onPageTitle,
             onMediaRequest: onMediaRequest,
             onUnreadNotificationCountChanged: onUnreadNotificationCountChanged,
+            columnAppearanceMode: columnAppearanceMode,
             enableHandleDetection: enableHandleDetection,
             enableAccountTextHandleDetection: enableAccountTextHandleDetection,
             enableBroadHandleDetection: enableBroadHandleDetection,
@@ -262,15 +264,17 @@ struct WebColumnView: NSViewRepresentable {
 
         if enableChromeStripping {
             contentController.addUserScript(WKUserScript(
-                source: Coordinator.nativeColumnChromeScript,
+                source: Coordinator.structuralColumnChromeScript,
                 injectionTime: .atDocumentEnd,
                 forMainFrameOnly: true
             ))
+
         }
 
         let webView = DeckWKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = coordinator
         webView.uiDelegate = coordinator
+        webView.underPageBackgroundColor = .clear
         webView.allowsBackForwardNavigationGestures = false
         webView.routeHorizontalScrollToParent = routeHorizontalScrollToParent
         if let nativeScrollView = webView.subviews.compactMap({ $0 as? NSScrollView }).first {
@@ -322,6 +326,7 @@ struct WebColumnView: NSViewRepresentable {
         coordinator.onPageTitle = onPageTitle
         coordinator.onMediaRequest = onMediaRequest
         coordinator.onUnreadNotificationCountChanged = onUnreadNotificationCountChanged
+        coordinator.columnAppearanceMode = columnAppearanceMode
         coordinator.enableHandleDetection = enableHandleDetection
         coordinator.enableAccountTextHandleDetection = enableAccountTextHandleDetection
         coordinator.enableBroadHandleDetection = enableBroadHandleDetection
@@ -339,6 +344,10 @@ struct WebColumnView: NSViewRepresentable {
             coordinator.filter = filter
             webView.load(URLRequest(url: url))
             return
+        }
+
+        if coordinator.appliedColumnAppearanceMode != columnAppearanceMode {
+            coordinator.applyColumnAppearance(to: webView)
         }
 
         if coordinator.currentURL != url {
@@ -615,12 +624,12 @@ struct WebColumnView: NSViewRepresentable {
         })();
         """
 
-        static let nativeColumnChromeScript = """
+        static let structuralColumnChromeScript = """
         (function() {
-          if (window.__xflowNativeChromeInstalled) return;
-          window.__xflowNativeChromeInstalled = true;
+          if (window.__mosaicStructuralChromeInstalled) return;
+          window.__mosaicStructuralChromeInstalled = true;
 
-          const styleID = 'xflow-native-column-style';
+          const styleID = 'mosaic-column-structure-style';
 
           function ensureStyle() {
             if (document.getElementById(styleID)) return;
@@ -640,52 +649,10 @@ struct WebColumnView: NSViewRepresentable {
                 border-right: none !important;
                 width: 100% !important;
                 max-width: none !important;
-                background: rgba(255, 255, 255, 0.18) !important;
-                backdrop-filter: blur(10px) saturate(1.12) !important;
-              }
-              html, body, #react-root, [data-testid="react-root"] {
-                background: transparent !important;
               }
               [data-testid="primaryColumn"] section > div > div > div > div {
                 border-left: none !important;
                 border-right: none !important;
-              }
-              [data-testid="primaryColumn"] [data-testid="cellInnerDiv"] article {
-                background: rgba(255, 255, 255, 0.63) !important;
-                backdrop-filter: blur(8px) saturate(1.08) !important;
-              }
-              [data-testid="primaryColumn"] [data-testid="tweet"] {
-                background: transparent !important;
-              }
-              [data-testid="primaryColumn"] [role="separator"] {
-                opacity: 0.22 !important;
-              }
-              @media (prefers-color-scheme: dark) {
-                html, body, #react-root, [data-testid="react-root"] {
-                  background: #000 !important;
-                }
-                [data-testid="primaryColumn"] {
-                  background: rgba(0, 0, 0, 0.72) !important;
-                  color-scheme: dark !important;
-                }
-                [data-testid="primaryColumn"] [data-testid="cellInnerDiv"] article {
-                  background: rgba(0, 0, 0, 0.84) !important;
-                }
-                [data-testid="primaryColumn"] [role="separator"] {
-                  opacity: 0.32 !important;
-                }
-              }
-              @media (prefers-color-scheme: light) {
-                html, body, #react-root, [data-testid="react-root"] {
-                  background: transparent !important;
-                }
-                [data-testid="primaryColumn"] {
-                  background: rgba(255, 255, 255, 0.18) !important;
-                  color-scheme: light !important;
-                }
-                [data-testid="primaryColumn"] [data-testid="cellInnerDiv"] article {
-                  background: rgba(255, 255, 255, 0.63) !important;
-                }
               }
             `;
             (document.head || document.documentElement).appendChild(style);
@@ -694,6 +661,172 @@ struct WebColumnView: NSViewRepresentable {
           ensureStyle();
         })();
         """
+
+        static let integratedColumnThemeScript = """
+        (function() {
+          const styleID = 'mosaic-integrated-column-style';
+          let style = document.getElementById(styleID);
+          if (!style) {
+            style = document.createElement('style');
+            style.id = styleID;
+            (document.head || document.documentElement).appendChild(style);
+          }
+
+          style.textContent = `
+            :root {
+              --mosaic-accent: rgb(231, 216, 190);
+              --mosaic-ink: rgba(242, 245, 249, 0.94);
+              --mosaic-secondary: rgba(222, 229, 238, 0.58);
+              --mosaic-surface: rgba(24, 30, 40, 0.64);
+              --mosaic-surface-hover: rgba(53, 63, 76, 0.58);
+              --mosaic-inset: rgba(4, 9, 16, 0.22);
+              --mosaic-tab-surface: rgba(35, 43, 55, 0.52);
+              --mosaic-hairline: rgba(226, 238, 249, 0.075);
+              color-scheme: dark;
+            }
+
+            html, body, #react-root, [data-testid="react-root"] {
+              background: transparent !important;
+              font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif !important;
+            }
+
+            [data-testid="primaryColumn"] {
+              color: var(--mosaic-ink) !important;
+              background: var(--mosaic-surface) !important;
+              backdrop-filter: blur(26px) saturate(1.18) !important;
+              box-shadow: inset 0 0 0 1px var(--mosaic-hairline) !important;
+            }
+
+            [data-testid="primaryColumn"] [data-testid="cellInnerDiv"] {
+              border-color: transparent !important;
+              background: transparent !important;
+              box-shadow: none !important;
+              transition: background-color 130ms ease-out, filter 130ms ease-out !important;
+            }
+
+            [data-testid="primaryColumn"] [data-testid="cellInnerDiv"]:hover {
+              background: var(--mosaic-surface-hover) !important;
+              filter: brightness(1.035);
+            }
+
+            [data-testid="primaryColumn"] article,
+            [data-testid="primaryColumn"] [data-testid="tweet"] {
+              background: transparent !important;
+            }
+
+            [data-testid="primaryColumn"] [role="separator"] {
+              background-color: var(--mosaic-hairline) !important;
+              opacity: 0.18 !important;
+            }
+
+            [data-testid="primaryColumn"] a,
+            [data-testid="primaryColumn"] [data-testid="tweetText"] a {
+              text-decoration-thickness: 1px !important;
+              text-underline-offset: 2px !important;
+            }
+
+            [data-testid="primaryColumn"] [data-testid="tweetText"] a,
+            [data-testid="primaryColumn"] a[href*="/hashtag/"],
+            [data-testid="primaryColumn"] a[href*="/search?q="] {
+              color: var(--mosaic-accent) !important;
+            }
+
+            [data-testid="primaryColumn"] button,
+            [data-testid="primaryColumn"] [role="button"] {
+              -webkit-font-smoothing: antialiased !important;
+              transition: filter 120ms ease-out, transform 120ms ease-out !important;
+            }
+
+            [data-testid="primaryColumn"] button:hover,
+            [data-testid="primaryColumn"] [role="button"]:hover {
+              filter: brightness(1.09);
+            }
+
+            [data-testid="primaryColumn"] input,
+            [data-testid="primaryColumn"] textarea,
+            [data-testid="primaryColumn"] [role="textbox"] {
+              border-radius: 12px !important;
+              background-color: var(--mosaic-inset) !important;
+              box-shadow: inset 0 0 0 1px var(--mosaic-hairline) !important;
+              backdrop-filter: blur(12px) saturate(1.08) !important;
+            }
+
+            [data-testid="primaryColumn"] [role="tablist"] {
+              backdrop-filter: blur(18px) saturate(1.12) !important;
+              background: var(--mosaic-tab-surface) !important;
+              box-shadow: inset 0 -1px 0 var(--mosaic-hairline) !important;
+            }
+
+            [data-testid="primaryColumn"] [role="tab"][aria-selected="true"] {
+              font-weight: 700 !important;
+              color: var(--mosaic-accent) !important;
+            }
+
+            ::selection {
+              background: rgba(231, 216, 190, 0.3) !important;
+            }
+
+            ::-webkit-scrollbar { width: 10px; height: 10px; }
+            ::-webkit-scrollbar-track { background: transparent; }
+            ::-webkit-scrollbar-thumb {
+              background: rgba(210, 225, 238, 0.2);
+              border: 3px solid transparent;
+              border-radius: 999px;
+              background-clip: padding-box;
+            }
+            ::-webkit-scrollbar-thumb:hover {
+              background: rgba(231, 216, 190, 0.42);
+              border: 3px solid transparent;
+              background-clip: padding-box;
+            }
+
+            @media (prefers-color-scheme: light) {
+              :root {
+                --mosaic-accent: rgb(113, 94, 65);
+                --mosaic-ink: rgba(18, 24, 31, 0.9);
+                --mosaic-secondary: rgba(30, 40, 52, 0.56);
+                --mosaic-surface: rgba(235, 244, 249, 0.64);
+                --mosaic-surface-hover: rgba(255, 255, 252, 0.72);
+                --mosaic-inset: rgba(152, 178, 196, 0.16);
+                --mosaic-tab-surface: rgba(244, 249, 251, 0.56);
+                --mosaic-hairline: rgba(35, 67, 88, 0.065);
+                color-scheme: light;
+              }
+            }
+
+            @media (prefers-reduced-transparency: reduce) {
+              [data-testid="primaryColumn"],
+              [data-testid="primaryColumn"] [role="tablist"] {
+                backdrop-filter: none !important;
+              }
+            }
+
+            @media (prefers-reduced-motion: reduce) {
+              [data-testid="primaryColumn"] * { transition-duration: 0.001ms !important; }
+            }
+          `;
+          document.documentElement.dataset.mosaicAppearance = 'integrated';
+          return 'mosaic-integrated';
+        })();
+        """
+
+        static let removeIntegratedColumnThemeScript = """
+        (function() {
+          const style = document.getElementById('mosaic-integrated-column-style');
+          if (style) style.remove();
+          if (document.documentElement) delete document.documentElement.dataset.mosaicAppearance;
+          return 'original-x';
+        })();
+        """
+
+        static func columnAppearanceScript(for mode: ColumnAppearanceMode) -> String {
+            switch mode {
+            case .originalX:
+                return removeIntegratedColumnThemeScript
+            case .mosaicIntegrated:
+                return integratedColumnThemeScript
+            }
+        }
 
         static let unreadCountScript = """
         (function() {
@@ -764,6 +897,8 @@ struct WebColumnView: NSViewRepresentable {
         var onPageTitle: ((String?) -> Void)?
         var onMediaRequest: ((MediaRequest) -> Void)?
         var onUnreadNotificationCountChanged: ((Int, String?) -> Void)?
+        var columnAppearanceMode: ColumnAppearanceMode
+        var appliedColumnAppearanceMode: ColumnAppearanceMode?
         var enableHandleDetection: Bool
         var enableAccountTextHandleDetection: Bool
         var enableBroadHandleDetection: Bool
@@ -777,6 +912,7 @@ struct WebColumnView: NSViewRepresentable {
             onPageTitle: ((String?) -> Void)?,
             onMediaRequest: ((MediaRequest) -> Void)?,
             onUnreadNotificationCountChanged: ((Int, String?) -> Void)?,
+            columnAppearanceMode: ColumnAppearanceMode,
             enableHandleDetection: Bool,
             enableAccountTextHandleDetection: Bool,
             enableBroadHandleDetection: Bool,
@@ -788,6 +924,7 @@ struct WebColumnView: NSViewRepresentable {
             self.onPageTitle = onPageTitle
             self.onMediaRequest = onMediaRequest
             self.onUnreadNotificationCountChanged = onUnreadNotificationCountChanged
+            self.columnAppearanceMode = columnAppearanceMode
             self.enableHandleDetection = enableHandleDetection
             self.enableAccountTextHandleDetection = enableAccountTextHandleDetection
             self.enableBroadHandleDetection = enableBroadHandleDetection
@@ -802,12 +939,20 @@ struct WebColumnView: NSViewRepresentable {
             onNavigation?(webView.url)
             onPageTitle?(webView.title)
             applyFilter(to: webView)
+            applyColumnAppearance(to: webView)
             restoreCapturedPosition(in: webView)
             if let onPageReadyScript {
                 webView.evaluateJavaScript(onPageReadyScript)
             }
             if enableHandleDetection {
                 detectProfileMeta(in: webView)
+            }
+        }
+
+        func applyColumnAppearance(to webView: WKWebView) {
+            let mode = columnAppearanceMode
+            webView.evaluateJavaScript(Self.columnAppearanceScript(for: mode)) { [weak self] _, _ in
+                self?.appliedColumnAppearanceMode = mode
             }
         }
 

@@ -16,6 +16,12 @@ struct XFlowApp: App {
         .commands {
             DeckCommands(store: store)
         }
+
+        Settings {
+            MosaicSettingsView()
+                .environmentObject(store)
+                .preferredColorScheme(store.appearanceMode.preferredColorScheme)
+        }
     }
 }
 

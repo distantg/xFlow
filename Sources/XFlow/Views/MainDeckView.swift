@@ -12,20 +12,27 @@ struct MainDeckView: View {
     @EnvironmentObject private var store: DeckStore
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.controlActiveState) private var controlActiveState
 
     @State private var settingsColumnID: UUID?
     @State private var draggingColumnID: UUID?
     @State private var dragTranslation: CGFloat = 0
-    @State private var dragStartIndex: Int?
-    @State private var dragSlotWidth: CGFloat = 360
-    @State private var dragShiftedSlots = 0
+    @State private var dragColumnOrder: [UUID] = []
+    @State private var dragColumnWidths: [UUID: CGFloat] = [:]
+    @State private var dragSourceIndex: Int?
+    @State private var dragTargetIndex: Int?
+    @State private var isColumnDragSettling = false
     @State private var mediaRequest: MediaRequest?
-    @State private var ambientPulse = false
+    @State private var isDeckTransitioning = false
+    @State private var resetRevealCount: Int?
+    @State private var layoutResetAnimationID: UUID?
     @StateObject private var updateManager = UpdateManager()
     @State private var columnFrames: [UUID: CGRect] = [:]
     @State private var liveColumnIDs: Set<UUID> = []
 
-    private let columnSpacing: CGFloat = 14
+    private let columnSpacing: CGFloat = 10
     private let columnViewportCoordinateSpace = "mosaic-column-viewport"
 
     var body: some View {
@@ -37,8 +44,9 @@ struct MainDeckView: View {
                     accounts: store.accounts,
                     activeAccountID: store.activeAccountID,
                     appearanceMode: store.appearanceMode,
+                    columnAppearanceMode: store.columnAppearanceMode,
                     onSwitchAccount: { id in
-                        store.switchAccount(to: id)
+                        switchAccount(to: id)
                     },
                     onAddAccount: {
                         store.addAccount()
@@ -47,10 +55,19 @@ struct MainDeckView: View {
                         store.removeAccount(id)
                     },
                     onQuickAction: { action in
-                        store.handleSidebarAction(action)
+                        if action == .compose {
+                            withAnimation(MosaicMotion.expressive(reduceMotion: reduceMotion)) {
+                                store.presentComposer()
+                            }
+                        } else {
+                            store.handleSidebarAction(action)
+                        }
                     },
                     onAppearanceModeChange: { mode in
                         store.setAppearanceMode(mode)
+                    },
+                    onColumnAppearanceModeChange: { mode in
+                        store.setColumnAppearanceMode(mode)
                     },
                     isCheckingForUpdates: updateManager.isChecking,
                     onCheckUpdates: {
@@ -61,10 +78,6 @@ struct MainDeckView: View {
                 )
                 .zIndex(100)
 
-                Divider()
-                    .overlay(Color.white.opacity(0.12))
-                    .zIndex(90)
-
                 content
                     .zIndex(0)
             }
@@ -74,6 +87,12 @@ struct MainDeckView: View {
         .overlay(alignment: .topLeading) {
             TransparentWindowConfigurator()
                 .frame(width: 0, height: 0)
+        }
+        .overlay {
+            if store.isComposerSheetPresented, let activeAccount = store.activeAccount {
+                composerOverlay(account: activeAccount)
+                    .zIndex(45)
+            }
         }
         .overlay {
             if let mediaRequest {
@@ -113,12 +132,6 @@ struct MainDeckView: View {
             AddColumnSheet()
                 .environmentObject(store)
         }
-        .sheet(isPresented: $store.isComposerSheetPresented) {
-            if let activeAccount = store.activeAccount {
-                ComposerSheetView(account: activeAccount)
-                    .environmentObject(store)
-            }
-        }
         .sheet(item: quickPanelBinding) { destination in
             QuickActionPanelView(
                 destination: destination,
@@ -138,9 +151,6 @@ struct MainDeckView: View {
             XFlowNotificationCenter.shared.configure(with: store)
             updateManager.startAutomaticChecks()
             store.refreshAuthenticationState(for: store.activeAccountID, shouldPromptIfNeeded: true)
-            withAnimation(.easeInOut(duration: 6.5).repeatForever(autoreverses: true)) {
-                ambientPulse = true
-            }
         }
         .onChange(of: store.accounts) { accounts in
             XFlowNotificationCenter.shared.syncRemoteRouting(
@@ -154,50 +164,31 @@ struct MainDeckView: View {
                 activeAccountID: activeAccountID
             )
         }
+        .onChange(of: store.layoutResetSignal) { _ in
+            beginLayoutResetReveal()
+        }
     }
 
     private var backgroundLayer: some View {
-        ZStack {
-            Color.clear
-                .ignoresSafeArea()
-
-            Circle()
-                .fill(Color.white.opacity(0.16))
-                .blur(radius: 120)
-                .frame(width: 470, height: 470)
-                .scaleEffect(ambientPulse ? 1.12 : 0.88)
-                .offset(x: -360, y: -260)
-
-            Circle()
-                .fill(Color.purple.opacity(0.14))
-                .blur(radius: 110)
-                .frame(width: 520, height: 520)
-                .scaleEffect(ambientPulse ? 0.9 : 1.1)
-                .offset(x: 430, y: 310)
-
-            Circle()
-                .fill(Color.cyan.opacity(0.12))
-                .blur(radius: 95)
-                .frame(width: 420, height: 420)
-                .scaleEffect(ambientPulse ? 1.08 : 0.9)
-                .offset(x: 120, y: -340)
-        }
+        Color.clear
+            .ignoresSafeArea()
     }
 
     private var deckGlassBackground: some View {
         ZStack {
-            Rectangle()
-                .fill(.ultraThinMaterial)
+            if reduceTransparency {
+                Rectangle()
+                    .fill(colorScheme == .dark ? Color(red: 0.10, green: 0.12, blue: 0.15) : MosaicTheme.paleGlass)
+            } else {
+                MosaicBackdrop()
+            }
 
-            LinearGradient(
-                colors: [
-                    Color.white.opacity(0.16),
-                    Color.white.opacity(0.08),
-                    Color.purple.opacity(0.06)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            Rectangle()
+                .fill(
+                    colorScheme == .dark
+                        ? Color.black.opacity(controlActiveState == .inactive ? 0.1 : 0.045)
+                        : Color.white.opacity(controlActiveState == .inactive ? 0.1 : 0.035)
+                )
         }
         .ignoresSafeArea()
     }
@@ -237,21 +228,27 @@ struct MainDeckView: View {
                 // Keep each lightweight column host alive after it has been visited so
                 // SwiftUI cannot dismantle a parked WKWebView and lose timeline state.
                 HStack(alignment: .top, spacing: columnSpacing) {
-                    ForEach(store.columns) { column in
+                    ForEach(Array(store.columns.enumerated()), id: \.element.id) { index, column in
                         columnCard(
                             column,
                             renderAccountID: store.activeAccountID,
                             columnHeight: columnHeight,
                             isWebViewLive: shouldKeepWebViewLive(for: column)
                         )
+                        .opacity(isResetTileVisible(at: index) ? 1 : 0)
+                        .scaleEffect(
+                            isResetTileVisible(at: index) || reduceMotion ? 1 : 0.965,
+                            anchor: .leading
+                        )
                     }
 
                     addColumnTile
                         .frame(width: 220, height: columnHeight)
                 }
-                .padding(.horizontal, 14)
-                .padding(.bottom, 14)
-                .padding(.top, 14)
+                .animation(MosaicMotion.structural(reduceMotion: reduceMotion), value: store.columns.map(\.id))
+                .padding(.horizontal, 10)
+                .padding(.bottom, 10)
+                .padding(.top, 10)
             }
             .coordinateSpace(name: columnViewportCoordinateSpace)
             .onPreferenceChange(ColumnFramePreferenceKey.self) { frames in
@@ -265,6 +262,8 @@ struct MainDeckView: View {
                 updateLiveColumns(viewportSize: viewportSize)
             }
             .scrollDisabled(draggingColumnID != nil)
+            .opacity(isDeckTransitioning ? 0.42 : 1)
+            .scaleEffect(isDeckTransitioning && !reduceMotion ? 0.995 : 1)
             .onChange(of: store.scrollTargetColumnID) { target in
                 guard let target else {
                     return
@@ -284,33 +283,48 @@ struct MainDeckView: View {
     ) -> some View {
         ColumnCardView(
             column: column,
+            columnAppearanceMode: store.columnAppearanceMode,
             globalRefreshSignal: store.refreshSignal,
             activeAccountID: renderAccountID,
             isWebViewLive: isWebViewLive,
             isMediaSuspended: scenePhase != .active,
             onRemove: {
-                store.removeColumn(id: column.id)
+                withAnimation(MosaicMotion.structural(reduceMotion: reduceMotion)) {
+                    store.removeColumn(id: column.id)
+                }
             },
             onDuplicate: {
-                store.duplicateColumn(id: column.id)
+                withAnimation(MosaicMotion.structural(reduceMotion: reduceMotion)) {
+                    store.duplicateColumn(id: column.id)
+                }
             },
             onMoveLeft: {
-                store.shiftColumn(id: column.id, by: -1)
+                withAnimation(MosaicMotion.structural(reduceMotion: reduceMotion)) {
+                    store.shiftColumn(id: column.id, by: -1)
+                }
             },
             onMoveRight: {
-                store.shiftColumn(id: column.id, by: 1)
+                withAnimation(MosaicMotion.structural(reduceMotion: reduceMotion)) {
+                    store.shiftColumn(id: column.id, by: 1)
+                }
             },
             onWiden: {
-                store.adjustWidth(for: column.id, delta: 30)
+                withAnimation(MosaicMotion.structural(reduceMotion: reduceMotion)) {
+                    store.adjustWidth(for: column.id, delta: 30)
+                }
             },
             onNarrow: {
-                store.adjustWidth(for: column.id, delta: -30)
+                withAnimation(MosaicMotion.structural(reduceMotion: reduceMotion)) {
+                    store.adjustWidth(for: column.id, delta: -30)
+                }
             },
             onConfigure: {
                 settingsColumnID = column.id
             },
             onCompose: {
-                store.presentComposer()
+                withAnimation(MosaicMotion.expressive(reduceMotion: reduceMotion)) {
+                    store.presentComposer()
+                }
             },
             onResizeToWidth: { width in
                 store.setWidth(for: column.id, width: width)
@@ -350,10 +364,23 @@ struct MainDeckView: View {
             )
         )
         .id(column.id)
+        .transition(
+            .asymmetric(
+                insertion: .opacity.combined(with: .scale(scale: reduceMotion ? 1 : 0.96, anchor: .leading)),
+                removal: .opacity.combined(with: .scale(scale: reduceMotion ? 1 : 0.94))
+            )
+        )
         .frame(width: column.width, height: columnHeight)
         .offset(x: dragOffset(for: column.id))
-        .scaleEffect(draggingColumnID == column.id ? 1.015 : 1)
+        .scaleEffect(draggingColumnID == column.id ? 1.018 : 1)
         .zIndex(draggingColumnID == column.id ? 15 : 0)
+        .shadow(
+            color: Color.black.opacity(draggingColumnID == column.id ? 0.3 : 0),
+            radius: draggingColumnID == column.id ? 26 : 0,
+            x: 0,
+            y: draggingColumnID == column.id ? 14 : 0
+        )
+        .animation(.easeOut(duration: 0.14), value: draggingColumnID == column.id)
         .background {
             GeometryReader { proxy in
                 Color.clear.preference(
@@ -418,31 +445,106 @@ struct MainDeckView: View {
         Button {
             store.presentAddColumnSheet()
         } label: {
-            VStack(spacing: 10) {
-                Image(systemName: "plus.circle.fill")
-                    .font(.system(size: 28, weight: .bold))
-                Text("Add Column")
-                    .font(.headline)
-                Text("Home, Search, Profile, List")
-                    .font(.caption)
-                    .foregroundStyle(addColumnSecondaryTextColor)
+            ZStack {
+                VStack(spacing: 9) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 18, weight: .semibold))
+                        .frame(width: 36, height: 36)
+                        .background(MosaicSurface(level: .raised, cornerRadius: 18))
+                    Text("Add Column")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("⌘N")
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(addColumnSecondaryTextColor)
+                }
+                .padding(.horizontal, 28)
+                .padding(.vertical, 22)
+                .background(
+                    MosaicSurface(level: .base, cornerRadius: MosaicTheme.Radius.panel)
+                )
             }
             .foregroundStyle(addColumnPrimaryTextColor)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(.ultraThinMaterial)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(
-                        style: StrokeStyle(lineWidth: 1.1, dash: [7, 5]),
-                        antialiased: true
-                    )
-                    .foregroundStyle(addColumnBorderColor)
-            )
         }
         .buttonStyle(.plain)
+    }
+
+    private func composerOverlay(account: DeckAccount) -> some View {
+        ZStack {
+            Color.black.opacity(colorScheme == .dark ? 0.32 : 0.16)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    withAnimation(MosaicMotion.expressive(reduceMotion: reduceMotion)) {
+                        store.dismissComposer()
+                    }
+                }
+
+            ComposerSheetView(account: account)
+                .environmentObject(store)
+                .frame(maxWidth: 980, maxHeight: 760)
+                .padding(34)
+                .transition(
+                    .opacity.combined(
+                        with: .scale(scale: reduceMotion ? 1 : 0.78, anchor: .topLeading)
+                    )
+                )
+        }
+        .animation(MosaicMotion.expressive(reduceMotion: reduceMotion), value: store.isComposerSheetPresented)
+    }
+
+    private func switchAccount(to accountID: UUID) {
+        guard accountID != store.activeAccountID else {
+            return
+        }
+
+        guard !reduceMotion else {
+            store.switchAccount(to: accountID)
+            return
+        }
+
+        withAnimation(.easeOut(duration: 0.1)) {
+            isDeckTransitioning = true
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            store.switchAccount(to: accountID)
+            withAnimation(MosaicMotion.structural(reduceMotion: false)) {
+                isDeckTransitioning = false
+            }
+        }
+    }
+
+    private func beginLayoutResetReveal() {
+        guard !reduceMotion else {
+            resetRevealCount = nil
+            layoutResetAnimationID = nil
+            return
+        }
+
+        let animationID = UUID()
+        layoutResetAnimationID = animationID
+        resetRevealCount = 0
+
+        for index in store.columns.indices {
+            let delay = min(Double(index) * 0.035, 0.14)
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                guard layoutResetAnimationID == animationID else { return }
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
+                    resetRevealCount = max(resetRevealCount ?? 0, index + 1)
+                }
+            }
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.52) {
+            guard layoutResetAnimationID == animationID else { return }
+            resetRevealCount = nil
+            layoutResetAnimationID = nil
+        }
+    }
+
+    private func isResetTileVisible(at index: Int) -> Bool {
+        guard let resetRevealCount else { return true }
+        return index < resetRevealCount
     }
 
     private var addColumnPrimaryTextColor: Color {
@@ -453,34 +555,69 @@ struct MainDeckView: View {
         colorScheme == .dark ? Color.white.opacity(0.72) : Color.black.opacity(0.64)
     }
 
-    private var addColumnBorderColor: Color {
-        colorScheme == .dark ? Color.white.opacity(0.28) : Color.black.opacity(0.22)
-    }
-
     private func dragOffset(for columnID: UUID) -> CGFloat {
-        draggingColumnID == columnID ? dragTranslation : 0
+        guard let draggingColumnID,
+              let sourceIndex = dragSourceIndex,
+              let targetIndex = dragTargetIndex else {
+            return 0
+        }
+
+        if columnID == draggingColumnID {
+            return dragTranslation
+        }
+
+        guard let columnIndex = dragColumnOrder.firstIndex(of: columnID) else {
+            return 0
+        }
+
+        let draggedSlotWidth = (dragColumnWidths[draggingColumnID] ?? 0) + columnSpacing
+
+        if targetIndex > sourceIndex,
+           columnIndex > sourceIndex,
+           columnIndex <= targetIndex {
+            return -draggedSlotWidth
+        }
+
+        if targetIndex < sourceIndex,
+           columnIndex >= targetIndex,
+           columnIndex < sourceIndex {
+            return draggedSlotWidth
+        }
+
+        return 0
     }
 
     private func beginColumnDrag(_ columnID: UUID) {
         if draggingColumnID == nil {
+            let order = store.columns.map(\.id)
+            let sourceIndex = order.firstIndex(of: columnID)
+
             draggingColumnID = columnID
             dragTranslation = 0
-            dragStartIndex = store.columns.firstIndex(where: { $0.id == columnID })
-            dragShiftedSlots = 0
-            if let startIndex = dragStartIndex {
-                dragSlotWidth = CGFloat(store.columns[startIndex].width) + columnSpacing
-            } else {
-                dragSlotWidth = 360
-            }
+            dragColumnOrder = order
+            dragColumnWidths = Dictionary(
+                uniqueKeysWithValues: store.columns.map { ($0.id, CGFloat($0.width)) }
+            )
+            dragSourceIndex = sourceIndex
+            dragTargetIndex = sourceIndex
         }
     }
 
     private func updateColumnDrag(_ columnID: UUID, translation rawTranslation: CGFloat) {
-        guard draggingColumnID == columnID else {
+        guard draggingColumnID == columnID, !isColumnDragSettling else {
             return
         }
 
-        reorderColumnsIfNeeded(for: columnID, rawTranslation: rawTranslation)
+        dragTranslation = rawTranslation
+
+        let newTargetIndex = targetIndex(for: columnID, translation: rawTranslation)
+        guard newTargetIndex != dragTargetIndex else {
+            return
+        }
+
+        withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.86)) {
+            dragTargetIndex = newTargetIndex
+        }
     }
 
     private func endColumnDrag(_ columnID: UUID) {
@@ -488,62 +625,105 @@ struct MainDeckView: View {
             return
         }
 
-        withAnimation(.spring(response: 0.22, dampingFraction: 0.86)) {
-            dragTranslation = 0
+        isColumnDragSettling = true
+        let landingOffset = landingOffsetForDraggedColumn()
+        withAnimation(.easeOut(duration: 0.18)) {
+            dragTranslation = landingOffset
         }
-        dragStartIndex = nil
-        dragSlotWidth = 360
-        dragShiftedSlots = 0
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-            if draggingColumnID == columnID {
-                draggingColumnID = nil
-            }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            commitColumnDrag(columnID)
         }
     }
 
-    private func reorderColumnsIfNeeded(for columnID: UUID, rawTranslation: CGFloat) {
-        guard let startIndex = dragStartIndex else {
-            dragTranslation = rawTranslation
+    private func targetIndex(for columnID: UUID, translation: CGFloat) -> Int? {
+        guard let sourceIndex = dragSourceIndex,
+              dragColumnOrder.indices.contains(sourceIndex) else {
+            return nil
+        }
+
+        let draggedWidth = dragColumnWidths[columnID] ?? 0
+        let draggedCenter = leadingOffset(for: sourceIndex) + (draggedWidth / 2) + translation
+        var targetIndex = sourceIndex
+
+        for index in dragColumnOrder.indices where index != sourceIndex {
+            let id = dragColumnOrder[index]
+            let width = dragColumnWidths[id] ?? 0
+            let center = leadingOffset(for: index) + (width / 2)
+
+            if index < sourceIndex, draggedCenter < center {
+                targetIndex = index
+                break
+            }
+
+            if index > sourceIndex, draggedCenter > center {
+                targetIndex = index
+            }
+        }
+
+        return targetIndex
+    }
+
+    private func leadingOffset(for index: Int) -> CGFloat {
+        guard index > 0 else {
+            return 0
+        }
+
+        return dragColumnOrder[..<index].reduce(0) { offset, id in
+            offset + (dragColumnWidths[id] ?? 0) + columnSpacing
+        }
+    }
+
+    private func landingOffsetForDraggedColumn() -> CGFloat {
+        guard let sourceIndex = dragSourceIndex,
+              let targetIndex = dragTargetIndex else {
+            return 0
+        }
+
+        if targetIndex > sourceIndex {
+            return dragColumnOrder[(sourceIndex + 1)...targetIndex].reduce(0) { offset, id in
+                offset + (dragColumnWidths[id] ?? 0) + columnSpacing
+            }
+        }
+
+        if targetIndex < sourceIndex {
+            return -dragColumnOrder[targetIndex..<sourceIndex].reduce(0) { offset, id in
+                offset + (dragColumnWidths[id] ?? 0) + columnSpacing
+            }
+        }
+
+        return 0
+    }
+
+    private func commitColumnDrag(_ columnID: UUID) {
+        guard draggingColumnID == columnID,
+              let targetIndex = dragTargetIndex,
+              let currentIndex = store.columns.firstIndex(where: { $0.id == columnID }) else {
+            resetColumnDrag()
             return
         }
 
-        let safeSlotWidth = max(140, dragSlotWidth)
-        let minShift = -startIndex
-        let maxShift = (store.columns.count - 1) - startIndex
-
-        var shiftedSlots = dragShiftedSlots
-        let trigger: CGFloat = 0.68
-
-        while shiftedSlots < maxShift,
-              rawTranslation >= (CGFloat(shiftedSlots) + trigger) * safeSlotWidth {
-            shiftedSlots += 1
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            if targetIndex != currentIndex {
+                store.columns.move(
+                    fromOffsets: IndexSet(integer: currentIndex),
+                    toOffset: targetIndex > currentIndex ? targetIndex + 1 : targetIndex
+                )
+            }
+            resetColumnDrag()
         }
+    }
 
-        while shiftedSlots > minShift,
-              rawTranslation <= (CGFloat(shiftedSlots) - trigger) * safeSlotWidth {
-            shiftedSlots -= 1
-        }
-
-        dragTranslation = rawTranslation - (CGFloat(shiftedSlots) * safeSlotWidth)
-
-        guard let currentIndex = store.columns.firstIndex(where: { $0.id == columnID }) else {
-            return
-        }
-
-        let desiredIndex = max(0, min(store.columns.count - 1, startIndex + shiftedSlots))
-        guard desiredIndex != currentIndex else {
-            dragShiftedSlots = shiftedSlots
-            return
-        }
-
-        withAnimation(.easeInOut(duration: 0.16)) {
-            store.columns.move(
-                fromOffsets: IndexSet(integer: currentIndex),
-                toOffset: desiredIndex > currentIndex ? desiredIndex + 1 : desiredIndex
-            )
-        }
-        dragShiftedSlots = shiftedSlots
+    private func resetColumnDrag() {
+        draggingColumnID = nil
+        dragTranslation = 0
+        dragColumnOrder = []
+        dragColumnWidths = [:]
+        dragSourceIndex = nil
+        dragTargetIndex = nil
+        isColumnDragSettling = false
     }
 
     private var settingsColumnBinding: Binding<DeckColumn?> {

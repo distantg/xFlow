@@ -3,6 +3,7 @@ import WebKit
 
 struct MediaLightboxView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let request: MediaRequest
     let accountID: UUID
@@ -23,41 +24,31 @@ struct MediaLightboxView: View {
                 content
                     .background(lightboxSurface)
 
-                if showClose {
-                    Button {
-                        onClose()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(.white)
-                            .frame(width: 34, height: 34)
-                            .background(
-                                Circle()
-                                    .fill(Color.black.opacity(0.55))
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .padding(12)
-                    .transition(.scale.combined(with: .opacity))
+                Button {
+                    onClose()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(MosaicTheme.primaryText(for: colorScheme))
                 }
+                .buttonStyle(MosaicIconButtonStyle(size: 34, prominent: showClose))
+                .opacity(showClose ? 1 : 0.72)
+                .padding(12)
+                .keyboardShortcut(.cancelAction)
+                .help("Close")
             }
             .frame(maxWidth: 1160, maxHeight: 780)
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(Color.white.opacity(0.24), lineWidth: 1)
-            )
-            .shadow(color: Color.black.opacity(0.35), radius: 30, x: 0, y: 16)
             .padding(34)
-            .scaleEffect(didAppear ? 1 : 0.92)
+            .scaleEffect(didAppear || reduceMotion ? 1 : 0.94)
             .opacity(didAppear ? 1 : 0)
             .onAppear {
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.84)) {
+                withAnimation(MosaicMotion.expressive(reduceMotion: reduceMotion)) {
                     didAppear = true
                 }
             }
             .onHover { hovering in
-                withAnimation(.spring(response: 0.2, dampingFraction: 0.9)) {
+                withAnimation(MosaicMotion.micro(reduceMotion: reduceMotion)) {
                     showClose = hovering
                 }
             }
@@ -65,23 +56,11 @@ struct MediaLightboxView: View {
     }
 
     private var lightboxBackdrop: some View {
-        Color.black.opacity(colorScheme == .dark ? 0.2 : 0.12)
+        Color.black.opacity(colorScheme == .dark ? 0.48 : 0.25)
     }
 
     private var lightboxSurface: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(.ultraThinMaterial)
-
-            LinearGradient(
-                colors: [
-                    Color.white.opacity(colorScheme == .dark ? 0.1 : 0.16),
-                    Color.white.opacity(colorScheme == .dark ? 0.04 : 0.08)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
+        MosaicSurface(level: .overlay, cornerRadius: MosaicTheme.Radius.panel)
     }
 
     @ViewBuilder

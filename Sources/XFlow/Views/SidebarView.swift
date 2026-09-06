@@ -6,11 +6,13 @@ struct SidebarView: View {
     let accounts: [DeckAccount]
     let activeAccountID: UUID
     let appearanceMode: AppAppearanceMode
+    let columnAppearanceMode: ColumnAppearanceMode
     let onSwitchAccount: (UUID) -> Void
     let onAddAccount: () -> Void
     let onRemoveAccount: (UUID) -> Void
     let onQuickAction: (XSidebarAction) -> Void
     let onAppearanceModeChange: (AppAppearanceMode) -> Void
+    let onColumnAppearanceModeChange: (ColumnAppearanceMode) -> Void
     let isCheckingForUpdates: Bool
     let onCheckUpdates: () -> Void
 
@@ -18,7 +20,7 @@ struct SidebarView: View {
     @State private var menuScrollRange: CGFloat = 0
 
     @State private var isAccountPanelExpanded = false
-    @State private var pendingRemovalAccountID: UUID?
+    @State private var isAppearancePopoverPresented = false
 
     private let quickActions: [XSidebarAction] = [
         .home,
@@ -33,15 +35,12 @@ struct SidebarView: View {
     ]
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 8) {
             accountSwitcherArea
                 .zIndex(300)
 
-            Divider()
-                .overlay(separatorColor)
-
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 10) {
+                VStack(spacing: 5) {
                     Button {
                         onQuickAction(.compose)
                     } label: {
@@ -50,9 +49,9 @@ struct SidebarView: View {
                                 .font(.system(size: 21, weight: .bold))
                                 .foregroundStyle(labelColor.opacity(0.9))
                         }
-                        .frame(width: 62, height: 62)
+                        .frame(width: 54, height: 54)
                     }
-                    .buttonStyle(NeumorphicCircleButtonStyle(surfaceOpacity: composeSurfaceOpacity))
+                    .buttonStyle(MosaicIconButtonStyle(size: 54, prominent: true))
                     .help(XSidebarAction.compose.title)
 
                     ForEach(quickActions) { action in
@@ -61,20 +60,29 @@ struct SidebarView: View {
                         } label: {
                             sidebarIcon(action.symbolName)
                         }
-                        .buttonStyle(NeumorphicRoundedButtonStyle(cornerRadius: 12, surfaceOpacity: surfaceOpacity))
+                        .buttonStyle(MosaicIconButtonStyle(size: 44))
                         .help(action.title)
                     }
 
                     Spacer(minLength: 10)
 
-                    AppearanceModeSlider(
-                        mode: appearanceMode,
-                        foreground: labelColor,
-                        colorScheme: colorScheme,
-                        onSelect: onAppearanceModeChange
-                    )
-                    .frame(width: 66, height: 32)
+                    Button {
+                        isAppearancePopoverPresented.toggle()
+                    } label: {
+                        Image(systemName: appearanceSymbol)
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(labelColor.opacity(0.88))
+                    }
+                    .buttonStyle(MosaicIconButtonStyle(size: 38))
                     .help("Appearance")
+                    .popover(isPresented: $isAppearancePopoverPresented, arrowEdge: .leading) {
+                        SidebarAppearancePopover(
+                            appearanceMode: appearanceMode,
+                            columnAppearanceMode: columnAppearanceMode,
+                            onAppearanceModeChange: onAppearanceModeChange,
+                            onColumnAppearanceModeChange: onColumnAppearanceModeChange
+                        )
+                    }
 
                     Button {
                         onCheckUpdates()
@@ -88,7 +96,7 @@ struct SidebarView: View {
                         }
                     }
                     .disabled(isCheckingForUpdates)
-                    .buttonStyle(NeumorphicRoundedButtonStyle(cornerRadius: 12, surfaceOpacity: surfaceOpacity))
+                    .buttonStyle(MosaicIconButtonStyle(size: 38))
                     .help("Check for updates")
                 }
                 .frame(maxWidth: .infinity)
@@ -115,174 +123,134 @@ struct SidebarView: View {
                 }
             }
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 8)
         .padding(.top, 40)
         .padding(.bottom, 14)
-        .frame(width: 96)
+        .frame(width: 82)
         .background(
-            RoundedRectangle(cornerRadius: 0)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(colorScheme == .dark ? 0.1 : 0.18),
-                            Color.white.opacity(colorScheme == .dark ? 0.02 : 0.04)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
+            MosaicSurface(level: .base, cornerRadius: 0)
         )
         .ignoresSafeArea(.container, edges: .top)
         .zIndex(200)
-        .animation(.spring(response: 0.24, dampingFraction: 0.86), value: isAccountPanelExpanded)
-        .animation(.easeInOut(duration: 0.18), value: pendingRemovalAccountID)
     }
 
     private var accountSwitcherArea: some View {
-        ZStack(alignment: .top) {
-            Button {
-                withAnimation(.spring(response: 0.24, dampingFraction: 0.86)) {
-                    isAccountPanelExpanded.toggle()
-                    if !isAccountPanelExpanded {
-                        pendingRemovalAccountID = nil
-                    }
-                }
-            } label: {
-                accountAvatar(for: activeAccount, size: 54, isActive: true)
-            }
-            .buttonStyle(.plain)
-            .help("Accounts")
-
-            if isAccountPanelExpanded {
-                accountPanel
-                    .offset(x: 68, y: 62)
-                    .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .topLeading)))
-                    .zIndex(500)
-            }
+        Button {
+            isAccountPanelExpanded.toggle()
+        } label: {
+            accountAvatar(for: activeAccount, size: 54, isActive: true)
+        }
+        .buttonStyle(.plain)
+        .help("Accounts")
+        .accessibilityLabel("Switch accounts")
+        .popover(isPresented: $isAccountPanelExpanded, arrowEdge: .leading) {
+            accountPanel
         }
         .frame(maxWidth: .infinity, alignment: .center)
     }
 
     private var accountPanel: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(accounts) { account in
-                HStack(spacing: 10) {
-                    Button {
-                        onSwitchAccount(account.id)
-                        withAnimation(.spring(response: 0.24, dampingFraction: 0.86)) {
-                            isAccountPanelExpanded = false
-                            pendingRemovalAccountID = nil
-                        }
-                    } label: {
-                        accountAvatar(for: account, size: 42, isActive: account.id == activeAccountID)
-                    }
-                    .buttonStyle(.plain)
-                    .help(account.name)
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Accounts")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(accountDisplayLabel(for: account))
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(labelColor.opacity(0.92))
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text("Switch accounts without changing your deck.")
+                    .font(.caption)
+                    .foregroundStyle(MosaicTheme.secondaryText(for: colorScheme))
+            }
 
-                    if pendingRemovalAccountID == account.id {
-                        Button("Remove Account") {
-                            onRemoveAccount(account.id)
-                            withAnimation(.easeInOut(duration: 0.16)) {
-                                pendingRemovalAccountID = nil
-                                if account.id == activeAccountID {
-                                    isAccountPanelExpanded = false
-                                }
-                            }
-                        }
-                        .font(.system(size: 9, weight: .semibold))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(Color.red.opacity(colorScheme == .dark ? 0.34 : 0.22))
-                        )
-                        .foregroundStyle(labelColor.opacity(0.96))
-                        .buttonStyle(.plain)
-                        .transition(.opacity.combined(with: .move(edge: .trailing)))
-                    } else {
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.16)) {
-                                pendingRemovalAccountID = account.id
-                            }
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(Color.white.opacity(0.96))
-                                .frame(width: 22, height: 22)
-                                .background(
-                                    Circle()
-                                        .fill(Color.red.opacity(colorScheme == .dark ? 0.76 : 0.62))
-                                )
-                                .overlay(
-                                    Circle()
-                                        .stroke(Color.white.opacity(0.52), lineWidth: 1)
-                                )
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(accounts.count <= 1)
-                        .opacity(accounts.count <= 1 ? 0.35 : 1)
-                        .transition(.opacity.combined(with: .move(edge: .trailing)))
+            ScrollView(.vertical, showsIndicators: accounts.count > 5) {
+                LazyVStack(spacing: 4) {
+                    ForEach(accounts) { account in
+                        accountRow(account)
                     }
                 }
             }
+            .frame(height: accountListHeight)
 
-            HStack(spacing: 10) {
-                Button {
-                    onAddAccount()
-                    withAnimation(.spring(response: 0.24, dampingFraction: 0.86)) {
-                        isAccountPanelExpanded = false
-                        pendingRemovalAccountID = nil
-                    }
-                } label: {
+            Button {
+                onAddAccount()
+                isAccountPanelExpanded = false
+            } label: {
+                HStack(spacing: 9) {
                     Image(systemName: "plus")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(labelColor.opacity(0.9))
-                        .frame(width: 42, height: 42)
-                        .background(
-                            Circle()
-                                .fill(Color.white.opacity(colorScheme == .dark ? 0.16 : 0.26))
-                                .shadow(color: highlightShadow.opacity(0.8), radius: 4, x: -2, y: -2)
-                                .shadow(color: depthShadow, radius: 5, x: 3, y: 3)
-                        )
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white.opacity(colorScheme == .dark ? 0.3 : 0.45), lineWidth: 1)
-                        )
+                        .font(.system(size: 13, weight: .semibold))
+                        .frame(width: 22, height: 22)
+
+                    Text("Add Account")
+                        .font(.system(size: 12, weight: .semibold))
+
+                    Spacer(minLength: 0)
                 }
-                .buttonStyle(.plain)
-                .help("Add Account")
-
-                Spacer(minLength: 0)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.top, 4)
+            .buttonStyle(MosaicButtonStyle(kind: .quiet, cornerRadius: 11, compact: true))
+            .help("Add another X account")
         }
-        .padding(.vertical, 10)
-        .padding(.leading, 31)
-        .padding(.trailing, 10)
-        .frame(width: 238, alignment: .leading)
+        .padding(14)
+        .frame(width: 286, alignment: .leading)
         .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(.ultraThinMaterial)
-
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(Color.black.opacity(colorScheme == .dark ? 0.18 : 0.08))
-
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .stroke(Color.white.opacity(colorScheme == .dark ? 0.28 : 0.44), lineWidth: 1)
-            }
+            MosaicSurface(level: .base, cornerRadius: 16)
         )
-        .shadow(color: depthShadow.opacity(0.95), radius: 12, x: 0, y: 8)
+    }
+
+    private func accountRow(_ account: DeckAccount) -> some View {
+        HStack(spacing: 4) {
+            Button {
+                onSwitchAccount(account.id)
+                isAccountPanelExpanded = false
+            } label: {
+                HStack(spacing: 10) {
+                    accountAvatar(for: account, size: 36, isActive: false)
+
+                    Text(accountDisplayLabel(for: account))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(labelColor.opacity(0.92))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+
+                    Spacer(minLength: 8)
+
+                    if account.id == activeAccountID {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(MosaicTheme.activeAccent(for: colorScheme))
+                            .accessibilityLabel("Current account")
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(MosaicButtonStyle(kind: .quiet, cornerRadius: 12, compact: true))
+            .help(account.id == activeAccountID ? "Current account" : "Switch to \(account.name)")
+
+            Menu {
+                Button("Remove Account", role: .destructive) {
+                    let removedActiveAccount = account.id == activeAccountID
+                    onRemoveAccount(account.id)
+                    if removedActiveAccount {
+                        isAccountPanelExpanded = false
+                    }
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(MosaicTheme.secondaryText(for: colorScheme))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .frame(width: 28, height: 28)
+            .disabled(accounts.count <= 1)
+            .opacity(accounts.count <= 1 ? 0.3 : 0.78)
+            .help(accounts.count <= 1 ? "At least one account is required" : "Account actions")
+            .accessibilityLabel("Actions for \(account.name)")
+        }
+    }
+
+    private var accountListHeight: CGFloat {
+        max(52, min(CGFloat(accounts.count) * 52, 260))
     }
 
     private func accountAvatar(for account: DeckAccount?, size: CGFloat, isActive: Bool) -> some View {
@@ -306,9 +274,9 @@ struct SidebarView: View {
         .clipShape(Circle())
         .overlay(
             Circle()
-                .stroke(isActive ? labelColor.opacity(0.95) : borderColor, lineWidth: isActive ? 2 : 1)
+                .stroke(isActive ? MosaicTheme.activeAccent(for: colorScheme).opacity(0.92) : borderColor, lineWidth: isActive ? 2 : 1)
         )
-        .shadow(color: depthShadow.opacity(0.9), radius: 5, x: 0, y: 2)
+        .shadow(color: depthShadow.opacity(0.72), radius: 5, x: 0, y: 2)
     }
 
     private var placeholderAvatar: some View {
@@ -363,14 +331,6 @@ struct SidebarView: View {
         colorScheme == .dark ? .white : .black
     }
 
-    private var separatorColor: Color {
-        labelColor.opacity(colorScheme == .dark ? 0.2 : 0.12)
-    }
-
-    private var highlightShadow: Color {
-        colorScheme == .dark ? Color.white.opacity(0.15) : Color.white.opacity(0.5)
-    }
-
     private var depthShadow: Color {
         colorScheme == .dark ? Color.black.opacity(0.32) : Color.black.opacity(0.18)
     }
@@ -383,12 +343,12 @@ struct SidebarView: View {
         colorScheme == .dark ? Color.white.opacity(0.28) : Color.white.opacity(0.22)
     }
 
-    private var surfaceOpacity: Double {
-        colorScheme == .dark ? 0.22 : 0.34
-    }
-
-    private var composeSurfaceOpacity: Double {
-        colorScheme == .dark ? 0.28 : 0.42
+    private var appearanceSymbol: String {
+        switch appearanceMode {
+        case .dark: return "moon.fill"
+        case .auto: return "circle.lefthalf.filled"
+        case .light: return "sun.max.fill"
+        }
     }
 
     private var canScrollMenu: Bool {
@@ -409,9 +369,9 @@ struct SidebarView: View {
 
     private func sidebarIcon(_ systemName: String) -> some View {
         Image(systemName: systemName)
-            .font(.system(size: 21, weight: .medium))
+            .font(.system(size: 19, weight: .medium))
             .foregroundStyle(labelColor.opacity(0.9))
-            .frame(width: 50, height: 44)
+            .frame(width: 42, height: 38)
     }
 
     private func scrollHintGlyph(_ symbolName: String) -> some View {
@@ -433,138 +393,75 @@ struct SidebarView: View {
     }
 }
 
-private struct AppearanceModeSlider: View {
-    let mode: AppAppearanceMode
-    let foreground: Color
-    let colorScheme: ColorScheme
-    let onSelect: (AppAppearanceMode) -> Void
+private struct SidebarAppearancePopover: View {
+    @Environment(\.colorScheme) private var colorScheme
 
-    private let modes: [AppAppearanceMode] = [.dark, .auto, .light]
+    let appearanceMode: AppAppearanceMode
+    let columnAppearanceMode: ColumnAppearanceMode
+    let onAppearanceModeChange: (AppAppearanceMode) -> Void
+    let onColumnAppearanceModeChange: (ColumnAppearanceMode) -> Void
 
     var body: some View {
-        GeometryReader { proxy in
-            let size = proxy.size
-            let knobSize = max(20, size.height - 6)
-            let knobOffset = offset(for: mode, in: size.width, knobSize: knobSize)
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Appearance")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                Text("Two looks. One uninterrupted deck.")
+                    .font(.caption)
+                    .foregroundStyle(MosaicTheme.secondaryText(for: colorScheme))
+            }
 
-            ZStack(alignment: .leading) {
-                Capsule(style: .continuous)
-                    .fill(Color.white.opacity(0.3))
-                    .shadow(color: Color.white.opacity(0.55), radius: 4, x: -2, y: -2)
-                    .shadow(color: Color.black.opacity(0.2), radius: 6, x: 3, y: 3)
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .stroke(Color.white.opacity(0.48), lineWidth: 1)
-                    )
+            VStack(alignment: .leading, spacing: 7) {
+                Text("WORKSPACE")
+                    .font(.system(size: 9, weight: .bold))
+                    .tracking(0.8)
+                    .foregroundStyle(MosaicTheme.secondaryText(for: colorScheme))
 
-                HStack {
-                    trackIcon("moon.fill", active: mode == .dark)
-                    Spacer()
-                    trackIcon("circle.lefthalf.filled", active: mode == .auto)
-                    Spacer()
-                    trackIcon("sun.max.fill", active: mode == .light)
+                Picker("Workspace appearance", selection: appearanceBinding) {
+                    Image(systemName: "moon.fill").tag(AppAppearanceMode.dark)
+                    Image(systemName: "circle.lefthalf.filled").tag(AppAppearanceMode.auto)
+                    Image(systemName: "sun.max.fill").tag(AppAppearanceMode.light)
                 }
-                .padding(.horizontal, 8)
-
-                Circle()
-                    .fill(Color.white.opacity(0.9))
-                    .shadow(color: Color.white.opacity(0.62), radius: 4, x: -2, y: -2)
-                    .shadow(color: Color.black.opacity(0.22), radius: 6, x: 3, y: 3)
-                    .overlay(
-                        Circle()
-                            .stroke(Color.white.opacity(0.52), lineWidth: 1)
-                    )
-                    .overlay(knobIcon)
-                    .frame(width: knobSize, height: knobSize)
-                    .offset(x: knobOffset)
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .padding(3)
+                .background(MosaicInsetSurface(cornerRadius: 9))
             }
-            .animation(.spring(response: 0.22, dampingFraction: 0.85), value: mode)
-            .contentShape(Capsule(style: .continuous))
-            .onTapGesture {
-                onSelect(nextMode(after: mode))
+
+            VStack(alignment: .leading, spacing: 7) {
+                Text("COLUMNS")
+                    .font(.system(size: 9, weight: .bold))
+                    .tracking(0.8)
+                    .foregroundStyle(MosaicTheme.secondaryText(for: colorScheme))
+
+                Picker("Column appearance", selection: columnAppearanceBinding) {
+                    ForEach(ColumnAppearanceMode.allCases) { mode in
+                        Text(mode == .originalX ? "Original X" : "Integrated")
+                            .tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .padding(3)
+                .background(MosaicInsetSurface(cornerRadius: 9))
+
+                Text(columnAppearanceMode.summary)
+                    .font(.caption2)
+                    .foregroundStyle(MosaicTheme.secondaryText(for: colorScheme))
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .gesture(
-                DragGesture(minimumDistance: 3)
-                    .onChanged { value in
-                        let selected = mode(for: value.location.x, width: size.width, knobSize: knobSize)
-                        if selected != mode {
-                            onSelect(selected)
-                        }
-                    }
-                    .onEnded { value in
-                        let selected = mode(for: value.location.x, width: size.width, knobSize: knobSize)
-                        onSelect(selected)
-                    }
-            )
         }
+        .padding(16)
+        .frame(width: 290)
+        .background(MosaicSurface(level: .base, cornerRadius: 16))
     }
 
-    private var knobIcon: some View {
-        ZStack {
-            knobGlyph("moon.fill", active: mode == .dark)
-            knobGlyph("circle.lefthalf.filled", active: mode == .auto)
-            knobGlyph("sun.max.fill", active: mode == .light)
-        }
-        .frame(width: 14, height: 14)
+    private var appearanceBinding: Binding<AppAppearanceMode> {
+        Binding(get: { appearanceMode }, set: onAppearanceModeChange)
     }
 
-    private func trackIcon(_ symbolName: String, active: Bool) -> some View {
-        Image(systemName: symbolName)
-            .font(.system(size: 9, weight: .semibold))
-            .foregroundStyle(foreground.opacity(trackOpacity(active: active)))
-            .opacity(active ? 1 : 0.85)
-    }
-
-    private func knobGlyph(_ symbolName: String, active: Bool) -> some View {
-        Image(systemName: symbolName)
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(knobGlyphColor)
-            .opacity(active ? 1 : 0)
-    }
-
-    private func trackOpacity(active: Bool) -> Double {
-        if colorScheme == .dark {
-            return active ? 0.95 : 0.56
-        }
-        return active ? 0.7 : 0.34
-    }
-
-    private var knobGlyphColor: Color {
-        if colorScheme == .dark {
-            return Color.black.opacity(0.78)
-        }
-        return foreground.opacity(0.84)
-    }
-
-    private func mode(for x: CGFloat, width: CGFloat, knobSize: CGFloat) -> AppAppearanceMode {
-        let travel = max(1, width - knobSize)
-        let normalized = min(max((x - (knobSize * 0.5)) / travel, 0), 1)
-
-        if normalized < 0.25 {
-            return .dark
-        }
-        if normalized > 0.75 {
-            return .light
-        }
-        return .auto
-    }
-
-    private func offset(for mode: AppAppearanceMode, in width: CGFloat, knobSize: CGFloat) -> CGFloat {
-        let travel = max(0, width - knobSize)
-        let index = CGFloat(modes.firstIndex(of: mode) ?? 1)
-        let step = travel / CGFloat(max(modes.count - 1, 1))
-        return index * step
-    }
-
-    private func nextMode(after mode: AppAppearanceMode) -> AppAppearanceMode {
-        switch mode {
-        case .dark:
-            return .auto
-        case .auto:
-            return .light
-        case .light:
-            return .dark
-        }
+    private var columnAppearanceBinding: Binding<ColumnAppearanceMode> {
+        Binding(get: { columnAppearanceMode }, set: onColumnAppearanceModeChange)
     }
 }
 

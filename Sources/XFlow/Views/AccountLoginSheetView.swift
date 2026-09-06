@@ -3,6 +3,7 @@ import SwiftUI
 struct AccountLoginSheetView: View {
     @EnvironmentObject private var store: DeckStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
 
     let account: DeckAccount
 
@@ -18,7 +19,7 @@ struct AccountLoginSheetView: View {
             header
 
             Divider()
-                .overlay(Color.white.opacity(0.12))
+                .overlay(MosaicTheme.hairline(for: colorScheme))
 
             WebColumnView(
                 url: loginURL,
@@ -43,20 +44,25 @@ struct AccountLoginSheetView: View {
             .id("login-\(account.id.uuidString)")
         }
         .frame(minWidth: 920, minHeight: 720)
+        .background(MosaicSurface(level: .base, cornerRadius: 0))
         .onAppear {
             checkAuthStatus()
         }
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
+            Image(systemName: isAuthenticated ? "checkmark.shield.fill" : "person.badge.key.fill")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(isAuthenticated ? Color.green : MosaicTheme.activeAccent(for: colorScheme))
+
             VStack(alignment: .leading, spacing: 4) {
                 Text("Sign In to X")
-                    .font(.title3.weight(.bold))
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
 
                 Text("Log in once for \(account.name). This account will be shared by all columns.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(MosaicTheme.secondaryText(for: colorScheme))
 
                 Text(isAuthenticated ? "Login detected" : "Waiting for login")
                     .font(.caption2.weight(.semibold))
@@ -73,25 +79,29 @@ struct AccountLoginSheetView: View {
             Button("Refresh") {
                 refreshKey = UUID()
             }
+            .buttonStyle(MosaicButtonStyle(compact: true))
 
             Button("Check Status") {
                 checkAuthStatus()
             }
+            .buttonStyle(MosaicButtonStyle(compact: true))
 
             Button("Continue") {
                 store.markAccountSignedIn(accountID: account.id)
                 dismiss()
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(MosaicButtonStyle(kind: .prominent, compact: true))
             .disabled(!isAuthenticated)
 
             Button("Cancel") {
                 store.dismissLoginFlow()
                 dismiss()
             }
+            .buttonStyle(MosaicButtonStyle(kind: .quiet, compact: true))
         }
-        .padding(12)
-        .background(Color.black.opacity(0.18))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(MosaicSurface(level: .raised, cornerRadius: 0))
     }
 
     private func checkAuthStatus() {

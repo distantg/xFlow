@@ -3,8 +3,10 @@ import SwiftUI
 
 struct ColumnCardView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let column: DeckColumn
+    let columnAppearanceMode: ColumnAppearanceMode
     let globalRefreshSignal: UUID
     let activeAccountID: UUID
     let isWebViewLive: Bool
@@ -30,6 +32,8 @@ struct ColumnCardView: View {
 
     @State private var localRefreshSignal = UUID()
     @State private var isHoveringHandle = false
+    @State private var isHoveringColumn = false
+    @State private var isHoveringMenuHandle = false
     @State private var isReorderHandleActive = false
     @State private var isMenuHandleActive = false
     @State private var isHoveringResizeEdge = false
@@ -39,14 +43,12 @@ struct ColumnCardView: View {
         VStack(spacing: 0) {
             header
 
-            Divider()
-                .overlay(Color.white.opacity(0.12))
-
             WebColumnView(
                 url: column.url,
                 refreshKey: refreshKey,
                 accountID: activeAccountID,
                 filter: column.filter,
+                columnAppearanceMode: columnAppearanceMode,
                 onNavigation: onNavigation,
                 onDetectedHandle: onDetectedHandle,
                 onDetectedProfileImage: onDetectedProfileImage,
@@ -59,45 +61,34 @@ struct ColumnCardView: View {
                 isMediaSuspended: isMediaSuspended
             )
             .id("\(column.id.uuidString)-\(activeAccountID.uuidString)")
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .padding(10)
+            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .padding(.horizontal, 6)
+            .padding(.bottom, 6)
         }
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.09),
-                            Color.white.opacity(0.03)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                )
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+            MosaicSurface(level: .tile, cornerRadius: MosaicTheme.Radius.tile)
         )
         .overlay(alignment: .trailing) {
             resizeEdge
         }
-        .shadow(color: Color.black.opacity(0.22), radius: 24, x: 0, y: 10)
+        .onHover { hovering in
+            withAnimation(MosaicMotion.micro(reduceMotion: reduceMotion)) {
+                isHoveringColumn = hovering
+            }
+        }
     }
 
     private var header: some View {
         HStack(alignment: .center, spacing: 8) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(column.title)
-                    .font(.headline)
-                    .foregroundStyle(labelColor.opacity(0.86))
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(labelColor.opacity(0.92))
 
                 if let subtitle = column.subtitle {
                     Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(labelColor.opacity(0.68))
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(labelColor.opacity(0.58))
                 }
 
                 if column.filter.hasRules {
@@ -177,17 +168,23 @@ struct ColumnCardView: View {
                         }
                 )
                 .help("Column options")
+                .opacity(isHoveringColumn || isMenuHandleActive || isHoveringMenuHandle ? 1 : 0.34)
+                .onHover { hovering in
+                    withAnimation(MosaicMotion.micro(reduceMotion: reduceMotion)) {
+                        isHoveringMenuHandle = hovering
+                    }
+                }
 
                 reorderHandle
                     .overlay(
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .stroke(
-                                isHoveringHandle ? Color.cyan.opacity(0.55) : Color.clear,
+                                isHoveringHandle ? MosaicTheme.activeAccent(for: colorScheme).opacity(0.58) : Color.clear,
                                 lineWidth: 1
                             )
                     )
                     .onHover { hovering in
-                        withAnimation(.easeInOut(duration: 0.12)) {
+                        withAnimation(MosaicMotion.micro(reduceMotion: reduceMotion)) {
                             isHoveringHandle = hovering
                         }
                     }
@@ -210,10 +207,12 @@ struct ColumnCardView: View {
                             }
                     )
                     .help("Drag to reorder")
+                    .opacity(isHoveringColumn || isReorderHandleActive ? 1 : 0.48)
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.top, 9)
+        .padding(.bottom, 8)
     }
 
     private var menuTriggerIcon: some View {
@@ -231,13 +230,11 @@ struct ColumnCardView: View {
             }
         }
         .frame(width: 24, height: 24)
-        .background(
-            NeumorphicRoundedSurface(
-                cornerRadius: 8,
-                opacity: 0.32,
-                pressed: isMenuHandleActive
-            )
-        )
+        .background {
+            if isMenuHandleActive || isHoveringMenuHandle {
+                MosaicSurface(level: .base, cornerRadius: 8, isHovering: isHoveringMenuHandle)
+            }
+        }
     }
 
     private var reorderHandle: some View {
@@ -253,25 +250,21 @@ struct ColumnCardView: View {
                 .frame(width: 2, height: 12)
         }
         .frame(width: 24, height: 24)
-            .background(
-                NeumorphicRoundedSurface(
+        .background {
+            if isHoveringHandle || isReorderHandleActive {
+                MosaicSurface(
+                    level: .base,
                     cornerRadius: 8,
-                    opacity: 0.32,
-                    pressed: isReorderHandleActive
+                    isSelected: isHoveringHandle || isReorderHandleActive
                 )
-            )
+            }
+        }
     }
 
     private func tag(_ text: String) -> some View {
-        Text(text)
+        Label(text, systemImage: "line.3.horizontal.decrease")
             .font(.system(size: 10, weight: .semibold))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(Color.white.opacity(0.12))
-            )
-            .foregroundStyle(labelColor.opacity(0.84))
+            .foregroundStyle(MosaicTheme.activeAccent(for: colorScheme).opacity(0.78))
     }
 
     private var refreshKey: String {
@@ -286,7 +279,7 @@ struct ColumnCardView: View {
             .overlay(alignment: .leading) {
                 if isHoveringResizeEdge || resizeStartWidth != nil {
                     Rectangle()
-                        .fill(labelColor.opacity(0.38))
+                        .fill(MosaicTheme.activeAccent(for: colorScheme).opacity(0.62))
                         .frame(width: 2)
                         .padding(.vertical, 10)
                 }

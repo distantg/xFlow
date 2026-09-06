@@ -99,7 +99,7 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
     <key>CFBundleShortVersionString</key>
     <string>1.4.9</string>
     <key>CFBundleVersion</key>
-    <string>32</string>
+    <string>39</string>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.social-networking</string>
     <key>LSMinimumSystemVersion</key>
