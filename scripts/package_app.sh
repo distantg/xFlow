@@ -97,9 +97,9 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.4.8</string>
+    <string>1.4.9</string>
     <key>CFBundleVersion</key>
-    <string>30</string>
+    <string>32</string>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.social-networking</string>
     <key>LSMinimumSystemVersion</key>

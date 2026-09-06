@@ -7,6 +7,8 @@ struct ColumnCardView: View {
     let column: DeckColumn
     let globalRefreshSignal: UUID
     let activeAccountID: UUID
+    let isWebViewLive: Bool
+    let isMediaSuspended: Bool
     let onRemove: () -> Void
     let onDuplicate: () -> Void
     let onMoveLeft: () -> Void
@@ -52,7 +54,9 @@ struct ColumnCardView: View {
                 onMediaRequest: onMediaRequest,
                 onUnreadNotificationCountChanged: onUnreadNotificationCountChanged,
                 enableHandleDetection: column.type.allowsAccountMetadataDetection,
-                enableAccountTextHandleDetection: column.type == .notifications
+                enableAccountTextHandleDetection: column.type == .notifications,
+                isLive: isWebViewLive,
+                isMediaSuspended: isMediaSuspended
             )
             .id("\(column.id.uuidString)-\(activeAccountID.uuidString)")
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))

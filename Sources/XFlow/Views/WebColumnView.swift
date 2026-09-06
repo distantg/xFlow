@@ -98,6 +98,100 @@ final class DeckWKWebView: WKWebView {
     }
 }
 
+final class DeckWebColumnHostView: NSView {
+    private let snapshotView = NSImageView()
+    private(set) var webView: DeckWKWebView?
+    private var lifecycleGeneration = 0
+    private var isHibernating = false
+    private(set) var wantsLiveContent = false
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        snapshotView.imageScaling = .scaleProportionallyUpOrDown
+        snapshotView.alphaValue = 0.82
+        snapshotView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(snapshotView)
+        NSLayoutConstraint.activate([
+            snapshotView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            snapshotView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            snapshotView.topAnchor.constraint(equalTo: topAnchor),
+            snapshotView.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func install(_ webView: DeckWKWebView) {
+        lifecycleGeneration += 1
+        isHibernating = false
+        self.webView = webView
+        snapshotView.isHidden = true
+        webView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(webView)
+        NSLayoutConstraint.activate([
+            webView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            webView.topAnchor.constraint(equalTo: topAnchor),
+            webView.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+    }
+
+    func activate() {
+        if !wantsLiveContent {
+            lifecycleGeneration += 1
+        }
+        wantsLiveContent = true
+        isHibernating = false
+        webView?.isHidden = false
+        snapshotView.isHidden = true
+    }
+
+    func park(captureState: @escaping (WKWebView, @escaping () -> Void) -> Void) {
+        wantsLiveContent = false
+        guard let webView else { return }
+        guard !isHibernating else { return }
+        isHibernating = true
+        lifecycleGeneration += 1
+        let generation = lifecycleGeneration
+
+        captureState(webView) { [weak self, weak webView] in
+            guard let self, let webView,
+                  self.lifecycleGeneration == generation,
+                  self.webView === webView,
+                  !self.wantsLiveContent else { return }
+
+            webView.takeSnapshot(with: nil) { [weak self, weak webView] image, _ in
+                guard let self, let webView,
+                      self.lifecycleGeneration == generation,
+                      self.webView === webView,
+                      !self.wantsLiveContent else { return }
+                if let image {
+                    self.snapshotView.image = image
+                    self.snapshotView.isHidden = false
+                }
+                // Keep the web view and its page alive so X's virtualized timeline,
+                // navigation state, and exact reading position remain untouched.
+                // Hiding it lets WebKit discard compositing work while media remains
+                // explicitly suspended by WebColumnView.
+                webView.isHidden = true
+                self.isHibernating = false
+            }
+        }
+    }
+
+    func removeLiveContent(teardown: (WKWebView) -> Void) {
+        lifecycleGeneration += 1
+        wantsLiveContent = false
+        isHibernating = false
+        guard let webView else { return }
+        teardown(webView)
+        webView.removeFromSuperview()
+        self.webView = nil
+    }
+}
+
 struct WebColumnView: NSViewRepresentable {
     let url: URL
     let refreshKey: String
@@ -116,6 +210,8 @@ struct WebColumnView: NSViewRepresentable {
     var enableBroadHandleDetection: Bool = false
     var onPageReadyScript: String? = nil
     var routeHorizontalScrollToParent: Bool = true
+    var isLive: Bool = true
+    var isMediaSuspended: Bool = false
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
@@ -132,11 +228,21 @@ struct WebColumnView: NSViewRepresentable {
         )
     }
 
-    func makeNSView(context: Context) -> WKWebView {
+    func makeNSView(context: Context) -> DeckWebColumnHostView {
+        let hostView = DeckWebColumnHostView(frame: .zero)
+        configureCoordinator(context.coordinator)
+        if isLive {
+            hostView.activate()
+            hostView.install(makeWebView(coordinator: context.coordinator))
+        }
+        return hostView
+    }
+
+    private func makeWebView(coordinator: Coordinator) -> DeckWKWebView {
         let configuration = WebSessionPool.shared.configuration(for: accountID)
         let contentController = configuration.userContentController
         if enableMediaCapture {
-            contentController.add(context.coordinator, name: Coordinator.mediaMessageName)
+            contentController.add(coordinator, name: Coordinator.mediaMessageName)
             contentController.addUserScript(WKUserScript(
                 source: Coordinator.mediaCaptureScript,
                 // Register media interception before X installs its window-level handlers.
@@ -146,7 +252,7 @@ struct WebColumnView: NSViewRepresentable {
         }
 
         if onUnreadNotificationCountChanged != nil {
-            contentController.add(context.coordinator, name: Coordinator.unreadCountMessageName)
+            contentController.add(coordinator, name: Coordinator.unreadCountMessageName)
             contentController.addUserScript(WKUserScript(
                 source: Coordinator.unreadCountScript,
                 injectionTime: .atDocumentEnd,
@@ -163,8 +269,8 @@ struct WebColumnView: NSViewRepresentable {
         }
 
         let webView = DeckWKWebView(frame: .zero, configuration: configuration)
-        webView.navigationDelegate = context.coordinator
-        webView.uiDelegate = context.coordinator
+        webView.navigationDelegate = coordinator
+        webView.uiDelegate = coordinator
         webView.allowsBackForwardNavigationGestures = false
         webView.routeHorizontalScrollToParent = routeHorizontalScrollToParent
         if let nativeScrollView = webView.subviews.compactMap({ $0 as? NSScrollView }).first {
@@ -172,65 +278,111 @@ struct WebColumnView: NSViewRepresentable {
             nativeScrollView.horizontalScrollElasticity = .none
         }
 
-        context.coordinator.currentURL = url
-        context.coordinator.refreshKey = refreshKey
-        context.coordinator.filter = filter
-        context.coordinator.accountID = accountID
-        context.coordinator.enableHandleDetection = enableHandleDetection
-        context.coordinator.enableAccountTextHandleDetection = enableAccountTextHandleDetection
-        context.coordinator.enableBroadHandleDetection = enableBroadHandleDetection
-        context.coordinator.onPageReadyScript = onPageReadyScript
+        coordinator.currentURL = url
+        coordinator.refreshKey = refreshKey
+        coordinator.filter = filter
+        coordinator.accountID = accountID
 
         webView.load(URLRequest(url: url))
-
         return webView
     }
 
-    func updateNSView(_ webView: WKWebView, context: Context) {
-        context.coordinator.onNavigation = onNavigation
-        context.coordinator.onDetectedHandle = onDetectedHandle
-        context.coordinator.onDetectedProfileImage = onDetectedProfileImage
-        context.coordinator.onPageTitle = onPageTitle
-        context.coordinator.onMediaRequest = onMediaRequest
-        context.coordinator.onUnreadNotificationCountChanged = onUnreadNotificationCountChanged
-        context.coordinator.enableHandleDetection = enableHandleDetection
-        context.coordinator.enableAccountTextHandleDetection = enableAccountTextHandleDetection
-        context.coordinator.enableBroadHandleDetection = enableBroadHandleDetection
-        context.coordinator.onPageReadyScript = onPageReadyScript
+    func updateNSView(_ hostView: DeckWebColumnHostView, context: Context) {
+        configureCoordinator(context.coordinator)
+
+        if !isLive {
+            if let webView = hostView.webView {
+                suspendMedia(in: webView, suspended: true)
+            }
+            hostView.park(
+                captureState: { webView, completion in
+                    context.coordinator.captureRestorationState(in: webView, completion: completion)
+                }
+            )
+            return
+        }
+
+        hostView.activate()
+        let webView: DeckWKWebView
+        if let existing = hostView.webView {
+            webView = existing
+        } else {
+            webView = makeWebView(coordinator: context.coordinator)
+            hostView.install(webView)
+        }
+        suspendMedia(in: webView, suspended: isMediaSuspended)
+
+        update(webView: webView, coordinator: context.coordinator)
+    }
+
+    private func configureCoordinator(_ coordinator: Coordinator) {
+        coordinator.onNavigation = onNavigation
+        coordinator.onDetectedHandle = onDetectedHandle
+        coordinator.onDetectedProfileImage = onDetectedProfileImage
+        coordinator.onPageTitle = onPageTitle
+        coordinator.onMediaRequest = onMediaRequest
+        coordinator.onUnreadNotificationCountChanged = onUnreadNotificationCountChanged
+        coordinator.enableHandleDetection = enableHandleDetection
+        coordinator.enableAccountTextHandleDetection = enableAccountTextHandleDetection
+        coordinator.enableBroadHandleDetection = enableBroadHandleDetection
+        coordinator.onPageReadyScript = onPageReadyScript
+    }
+
+    private func update(webView: WKWebView, coordinator: Coordinator) {
         if let webView = webView as? DeckWKWebView {
             webView.routeHorizontalScrollToParent = routeHorizontalScrollToParent
         }
 
-        if context.coordinator.accountID != accountID {
-            context.coordinator.accountID = accountID
-            context.coordinator.currentURL = url
-            context.coordinator.filter = filter
+        if coordinator.accountID != accountID {
+            coordinator.accountID = accountID
+            coordinator.currentURL = url
+            coordinator.filter = filter
             webView.load(URLRequest(url: url))
             return
         }
 
-        if context.coordinator.currentURL != url {
-            context.coordinator.currentURL = url
-            context.coordinator.filter = filter
+        if coordinator.currentURL != url {
+            coordinator.currentURL = url
+            coordinator.filter = filter
             webView.load(URLRequest(url: url))
             return
         }
 
-        if context.coordinator.refreshKey != refreshKey {
-            context.coordinator.refreshKey = refreshKey
-            context.coordinator.filter = filter
-            // Always reload from the target route so columns recover from /i/flow/login redirects.
-            webView.load(URLRequest(url: url))
+        if coordinator.refreshKey != refreshKey {
+            coordinator.refreshKey = refreshKey
+            coordinator.filter = filter
+            // Replace the current history entry so repeated refreshes cannot retain a
+            // chain of page snapshots. The target route also recovers login redirects.
+            let target = JavaScriptEncoding.stringLiteral(url.absoluteString)
+            webView.evaluateJavaScript("window.location.replace(\(target));") { _, error in
+                if error != nil {
+                    webView.load(URLRequest(url: url))
+                }
+            }
             return
         }
 
-        if context.coordinator.filter != filter {
-            context.coordinator.filter = filter
-            context.coordinator.applyFilter(to: webView)
+        if coordinator.filter != filter {
+            coordinator.filter = filter
+            coordinator.applyFilter(to: webView)
         }
     }
 
-    static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
+    private func suspendMedia(in webView: WKWebView, suspended: Bool) {
+        if #available(macOS 11.3, *) {
+            webView.setAllMediaPlaybackSuspended(suspended, completionHandler: nil)
+        }
+        webView.evaluateJavaScript(
+            "window.__mosaicBackgroundSuspended = \(suspended ? "true" : "false");" +
+            (suspended ? "" : "window.dispatchEvent(new Event('mosaicresume'));")
+        )
+    }
+
+    static func dismantleNSView(_ nsView: DeckWebColumnHostView, coordinator: Coordinator) {
+        nsView.removeLiveContent(teardown: teardownWebView)
+    }
+
+    private static func teardownWebView(_ nsView: WKWebView) {
         if #available(macOS 12.0, *) {
             nsView.closeAllMediaPresentations { }
         }
@@ -383,6 +535,7 @@ struct WebColumnView: NSViewRepresentable {
           disablePictureInPicture(document);
           hidePictureInPictureControl();
           new MutationObserver(function(records) {
+            if (window.__mosaicBackgroundSuspended) return;
             records.forEach(function(record) {
               record.addedNodes.forEach(function(node) {
                 if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
@@ -615,6 +768,7 @@ struct WebColumnView: NSViewRepresentable {
         var enableAccountTextHandleDetection: Bool
         var enableBroadHandleDetection: Bool
         var onPageReadyScript: String?
+        private var restorationState: (scrollY: Double, anchorPath: String?, anchorOffset: Double)?
 
         init(
             onNavigation: ((URL?) -> Void)?,
@@ -648,12 +802,88 @@ struct WebColumnView: NSViewRepresentable {
             onNavigation?(webView.url)
             onPageTitle?(webView.title)
             applyFilter(to: webView)
+            restoreCapturedPosition(in: webView)
             if let onPageReadyScript {
                 webView.evaluateJavaScript(onPageReadyScript)
             }
             if enableHandleDetection {
                 detectProfileMeta(in: webView)
             }
+        }
+
+        func captureRestorationState(in webView: WKWebView, completion: @escaping () -> Void) {
+            let script = """
+            (function() {
+              const scrolling = document.scrollingElement || document.documentElement;
+              const scrollY = Number(scrolling ? scrolling.scrollTop : window.scrollY) || 0;
+              const articles = Array.from(document.querySelectorAll('article'));
+              const visible = articles.find(function(article) {
+                const rect = article.getBoundingClientRect();
+                return rect.bottom > 0 && rect.top < window.innerHeight;
+              });
+              const link = visible && visible.querySelector('a[href*="/status/"]');
+              let anchorPath = '';
+              if (link && link.href) {
+                try { anchorPath = new URL(link.href).pathname || ''; } catch (_) {}
+              }
+              const anchorOffset = visible ? visible.getBoundingClientRect().top : 0;
+              return JSON.stringify({ scrollY, anchorPath, anchorOffset });
+            })();
+            """
+
+            webView.evaluateJavaScript(script) { [weak self] result, _ in
+                defer { completion() }
+                guard let self,
+                      let payload = result as? String,
+                      let data = payload.data(using: .utf8),
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                    return
+                }
+                let rawAnchorPath = json["anchorPath"] as? String
+                self.restorationState = (
+                    scrollY: (json["scrollY"] as? NSNumber)?.doubleValue ?? 0,
+                    anchorPath: rawAnchorPath.flatMap { $0.isEmpty ? nil : $0 },
+                    anchorOffset: (json["anchorOffset"] as? NSNumber)?.doubleValue ?? 0
+                )
+            }
+        }
+
+        private func restoreCapturedPosition(in webView: WKWebView) {
+            guard let restorationState else { return }
+            self.restorationState = nil
+
+            let anchorPath = JavaScriptEncoding.stringLiteral(restorationState.anchorPath)
+            let scrollY = restorationState.scrollY.isFinite ? restorationState.scrollY : 0
+            let anchorOffset = restorationState.anchorOffset.isFinite ? restorationState.anchorOffset : 0
+            let script = """
+            (function() {
+              const targetPath = \(anchorPath);
+              const fallbackY = \(scrollY);
+              const targetOffset = \(anchorOffset);
+              let attempts = 0;
+              function restore() {
+                if (targetPath) {
+                  const links = Array.from(document.querySelectorAll('a[href*="/status/"]'));
+                  const link = links.find(function(candidate) {
+                    try { return new URL(candidate.href).pathname === targetPath; } catch (_) { return false; }
+                  });
+                  const article = link && link.closest('article');
+                  if (article) {
+                    article.scrollIntoView({ block: 'start' });
+                    window.scrollBy(0, -targetOffset);
+                    return;
+                  }
+                }
+                if (attempts++ < 20) {
+                  setTimeout(restore, 150);
+                } else {
+                  window.scrollTo(0, fallbackY);
+                }
+              }
+              setTimeout(restore, 150);
+            })();
+            """
+            webView.evaluateJavaScript(script)
         }
 
         func webView(
@@ -839,6 +1069,7 @@ struct WebColumnView: NSViewRepresentable {
               }
 
               function apply() {
+                if (document.hidden || window.__mosaicBackgroundSuspended) return;
                 const articles = document.querySelectorAll('article');
                 articles.forEach(article => {
                   if (shouldHide(article)) {
@@ -862,6 +1093,10 @@ struct WebColumnView: NSViewRepresentable {
                 clearInterval(window.__xflowFilterInterval);
               }
               window.__xflowFilterInterval = setInterval(apply, 1800);
+              document.addEventListener('visibilitychange', function() {
+                if (!document.hidden) apply();
+              });
+              window.addEventListener('mosaicresume', apply);
             })();
             """
 

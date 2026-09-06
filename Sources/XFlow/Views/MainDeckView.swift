@@ -1,8 +1,17 @@
 import SwiftUI
 
+private struct ColumnFramePreferenceKey: PreferenceKey {
+    static var defaultValue: [UUID: CGRect] = [:]
+
+    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, newest in newest })
+    }
+}
+
 struct MainDeckView: View {
     @EnvironmentObject private var store: DeckStore
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var settingsColumnID: UUID?
     @State private var draggingColumnID: UUID?
@@ -13,8 +22,11 @@ struct MainDeckView: View {
     @State private var mediaRequest: MediaRequest?
     @State private var ambientPulse = false
     @StateObject private var updateManager = UpdateManager()
+    @State private var columnFrames: [UUID: CGRect] = [:]
+    @State private var liveColumnIDs: Set<UUID> = []
 
     private let columnSpacing: CGFloat = 14
+    private let columnViewportCoordinateSpace = "mosaic-column-viewport"
 
     var body: some View {
         ZStack {
@@ -192,12 +204,15 @@ struct MainDeckView: View {
 
     private var content: some View {
         GeometryReader { proxy in
-            contentBody(columnHeight: max(0, proxy.size.height - 28))
+            contentBody(
+                columnHeight: max(0, proxy.size.height - 28),
+                viewportSize: proxy.size
+            )
         }
     }
 
     @ViewBuilder
-    private func contentBody(columnHeight: CGFloat) -> some View {
+    private func contentBody(columnHeight: CGFloat, viewportSize: CGSize) -> some View {
         if activeAccountNeedsLogin {
             AccountLockedDeckView(
                 accountName: store.activeAccount?.name ?? "Account",
@@ -212,19 +227,22 @@ struct MainDeckView: View {
                 store.presentAddColumnSheet()
             }
         } else {
-            deckScrollView(columnHeight: columnHeight)
+            deckScrollView(columnHeight: columnHeight, viewportSize: viewportSize)
         }
     }
 
-    private func deckScrollView(columnHeight: CGFloat) -> some View {
+    private func deckScrollView(columnHeight: CGFloat, viewportSize: CGSize) -> some View {
         ScrollViewReader { scrollProxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(alignment: .top, spacing: columnSpacing) {
+                // Keep each lightweight column host alive after it has been visited so
+                // SwiftUI cannot dismantle a parked WKWebView and lose timeline state.
+                HStack(alignment: .top, spacing: columnSpacing) {
                     ForEach(store.columns) { column in
                         columnCard(
                             column,
                             renderAccountID: store.activeAccountID,
-                            columnHeight: columnHeight
+                            columnHeight: columnHeight,
+                            isWebViewLive: shouldKeepWebViewLive(for: column)
                         )
                     }
 
@@ -234,6 +252,17 @@ struct MainDeckView: View {
                 .padding(.horizontal, 14)
                 .padding(.bottom, 14)
                 .padding(.top, 14)
+            }
+            .coordinateSpace(name: columnViewportCoordinateSpace)
+            .onPreferenceChange(ColumnFramePreferenceKey.self) { frames in
+                columnFrames = frames
+                updateLiveColumns(viewportSize: viewportSize)
+            }
+            .onChange(of: viewportSize) { newSize in
+                updateLiveColumns(viewportSize: newSize)
+            }
+            .onChange(of: store.columns) { _ in
+                updateLiveColumns(viewportSize: viewportSize)
             }
             .scrollDisabled(draggingColumnID != nil)
             .onChange(of: store.scrollTargetColumnID) { target in
@@ -250,12 +279,15 @@ struct MainDeckView: View {
     private func columnCard(
         _ column: DeckColumn,
         renderAccountID: UUID,
-        columnHeight: CGFloat
+        columnHeight: CGFloat,
+        isWebViewLive: Bool
     ) -> some View {
         ColumnCardView(
             column: column,
             globalRefreshSignal: store.refreshSignal,
             activeAccountID: renderAccountID,
+            isWebViewLive: isWebViewLive,
+            isMediaSuspended: scenePhase != .active,
             onRemove: {
                 store.removeColumn(id: column.id)
             },
@@ -322,6 +354,41 @@ struct MainDeckView: View {
         .offset(x: dragOffset(for: column.id))
         .scaleEffect(draggingColumnID == column.id ? 1.015 : 1)
         .zIndex(draggingColumnID == column.id ? 15 : 0)
+        .background {
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: ColumnFramePreferenceKey.self,
+                    value: [column.id: proxy.frame(in: .named(columnViewportCoordinateSpace))]
+                )
+            }
+        }
+    }
+
+    private func shouldKeepWebViewLive(for column: DeckColumn) -> Bool {
+        if ColumnResidencyPolicy.isBackgroundMonitor(column) {
+            return true
+        }
+
+        if liveColumnIDs.isEmpty {
+            return store.columns.prefix(3).contains(where: { $0.id == column.id })
+        }
+
+        return liveColumnIDs.contains(column.id)
+    }
+
+    private func updateLiveColumns(viewportSize: CGSize) {
+        guard viewportSize.width > 0 else { return }
+
+        let desired = ColumnResidencyPolicy.desiredLiveColumnIDs(
+            columns: store.columns,
+            frames: columnFrames,
+            viewportSize: viewportSize,
+            columnSpacing: columnSpacing
+        )
+
+        if desired != liveColumnIDs {
+            liveColumnIDs = desired
+        }
     }
 
     private func notificationHandler(

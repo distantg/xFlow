@@ -6,7 +6,7 @@ struct XFlowApp: App {
     @StateObject private var store = DeckStore()
 
     var body: some Scene {
-        WindowGroup("Mosaic") {
+        Window("Mosaic", id: "main") {
             MainDeckView()
                 .environmentObject(store)
                 .preferredColorScheme(store.appearanceMode.preferredColorScheme)
@@ -23,7 +23,7 @@ struct DeckCommands: Commands {
     @ObservedObject var store: DeckStore
 
     var body: some Commands {
-        CommandGroup(after: .newItem) {
+        CommandGroup(replacing: .newItem) {
             Button("Add Column") {
                 store.presentAddColumnSheet()
             }
