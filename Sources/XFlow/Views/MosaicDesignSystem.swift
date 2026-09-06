@@ -212,6 +212,148 @@ struct MosaicInsetSurface: View {
     }
 }
 
+/// A single-layer glass control with the elongated pill geometry used by
+/// Mosaic's other primary controls. This avoids the doubled AppKit outline
+/// produced by embedding a native segmented picker inside an inset surface.
+struct MosaicSegmentedControl<Value: Hashable, SegmentLabel: View>: View {
+    let values: [Value]
+    @Binding var selection: Value
+    var height: CGFloat = 34
+    private let segmentLabel: (Value) -> SegmentLabel
+
+    init(
+        _ values: [Value],
+        selection: Binding<Value>,
+        height: CGFloat = 34,
+        @ViewBuilder label: @escaping (Value) -> SegmentLabel
+    ) {
+        self.values = values
+        _selection = selection
+        self.height = height
+        segmentLabel = label
+    }
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(values, id: \.self) { value in
+                Button {
+                    selection = value
+                } label: {
+                    segmentLabel(value)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: height)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(MosaicSegmentButtonStyle(isSelected: selection == value))
+                .accessibilityAddTraits(selection == value ? .isSelected : [])
+            }
+        }
+        .padding(3)
+        .background(MosaicSegmentTrack())
+    }
+}
+
+private struct MosaicSegmentTrack: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    var body: some View {
+        Capsule(style: .continuous)
+            .fill(reduceTransparency ? AnyShapeStyle(opaqueFill) : AnyShapeStyle(.ultraThinMaterial))
+            .overlay(
+                Capsule(style: .continuous)
+                    .fill(
+                        colorScheme == .dark
+                            ? Color.black.opacity(0.055)
+                            : Color.white.opacity(0.08)
+                    )
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(
+                        MosaicTheme.hairline(for: colorScheme).opacity(0.36),
+                        lineWidth: 0.5
+                    )
+            )
+    }
+
+    private var opaqueFill: Color {
+        colorScheme == .dark
+            ? Color(red: 0.15, green: 0.16, blue: 0.17)
+            : Color(red: 0.91, green: 0.92, blue: 0.92)
+    }
+}
+
+private struct MosaicSegmentButtonStyle: ButtonStyle {
+    let isSelected: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        MosaicSegmentButtonBody(configuration: configuration, isSelected: isSelected)
+    }
+}
+
+private struct MosaicSegmentButtonBody: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.isFocused) private var isFocused
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    let configuration: ButtonStyleConfiguration
+    let isSelected: Bool
+
+    @State private var isHovering = false
+
+    var body: some View {
+        configuration.label
+            .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
+            .foregroundStyle(
+                isSelected
+                    ? MosaicTheme.primaryText(for: colorScheme)
+                    : MosaicTheme.secondaryText(for: colorScheme)
+            )
+            .background(
+                Capsule(style: .continuous)
+                    .fill(segmentFill)
+                    .shadow(
+                        color: isSelected
+                            ? Color.black.opacity(colorScheme == .dark ? 0.14 : 0.055)
+                            : .clear,
+                        radius: isSelected ? 4 : 0,
+                        x: 0,
+                        y: 1
+                    )
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(
+                        isFocused
+                            ? MosaicTheme.activeAccent(for: colorScheme).opacity(0.72)
+                            : .clear,
+                        lineWidth: 1
+                    )
+            )
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.985 : 1)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.78 : 1) : 0.42)
+            .onHover { hovering in
+                withAnimation(MosaicMotion.micro(reduceMotion: reduceMotion)) {
+                    isHovering = hovering
+                }
+            }
+            .animation(MosaicMotion.micro(reduceMotion: reduceMotion), value: isSelected)
+            .animation(MosaicMotion.micro(reduceMotion: reduceMotion), value: configuration.isPressed)
+    }
+
+    private var segmentFill: Color {
+        if isSelected {
+            return MosaicTheme.accent.opacity(colorScheme == .dark ? 0.19 : 0.24)
+        }
+        if isHovering {
+            return Color.white.opacity(colorScheme == .dark ? 0.045 : 0.12)
+        }
+        return .clear
+    }
+}
+
 struct MosaicTextFieldStyle: TextFieldStyle {
     func _body(configuration: TextField<Self._Label>) -> some View {
         configuration

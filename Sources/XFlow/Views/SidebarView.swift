@@ -417,15 +417,17 @@ private struct SidebarAppearancePopover: View {
                     .tracking(0.8)
                     .foregroundStyle(MosaicTheme.secondaryText(for: colorScheme))
 
-                Picker("Workspace appearance", selection: appearanceBinding) {
-                    Image(systemName: "moon.fill").tag(AppAppearanceMode.dark)
-                    Image(systemName: "circle.lefthalf.filled").tag(AppAppearanceMode.auto)
-                    Image(systemName: "sun.max.fill").tag(AppAppearanceMode.light)
+                MosaicSegmentedControl(
+                    AppAppearanceMode.allCases,
+                    selection: appearanceBinding,
+                    height: 29
+                ) { mode in
+                    Image(systemName: mode.symbolName)
+                        .symbolRenderingMode(.monochrome)
+                        .font(.system(size: 13, weight: .semibold))
+                        .frame(width: 18, height: 18)
+                        .accessibilityLabel(mode.title)
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .padding(3)
-                .background(MosaicInsetSurface(cornerRadius: 9))
             }
 
             VStack(alignment: .leading, spacing: 7) {
@@ -434,16 +436,20 @@ private struct SidebarAppearancePopover: View {
                     .tracking(0.8)
                     .foregroundStyle(MosaicTheme.secondaryText(for: colorScheme))
 
-                Picker("Column appearance", selection: columnAppearanceBinding) {
-                    ForEach(ColumnAppearanceMode.allCases) { mode in
+                MosaicSegmentedControl(
+                    ColumnAppearanceMode.allCases,
+                    selection: columnAppearanceBinding,
+                    height: 29
+                ) { mode in
+                    HStack(spacing: 6) {
+                        Image(systemName: mode.symbolName)
+                            .symbolRenderingMode(.monochrome)
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .frame(width: 13, height: 13)
+
                         Text(mode == .originalX ? "Original X" : "Integrated")
-                            .tag(mode)
                     }
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .padding(3)
-                .background(MosaicInsetSurface(cornerRadius: 9))
 
                 Text(columnAppearanceMode.summary)
                     .font(.caption2)

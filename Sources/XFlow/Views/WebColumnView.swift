@@ -5,6 +5,13 @@ import WebKit
 
 final class DeckWKWebView: WKWebView {
     var routeHorizontalScrollToParent: Bool = true
+    var capturesHorizontalScrollInTopTabRail = false {
+        didSet {
+            guard capturesHorizontalScrollInTopTabRail else { return }
+            isForwardingHorizontalSequence = false
+            gestureAxisLock = .undecided
+        }
+    }
     private var isForwardingHorizontalSequence = false
     private var gestureAxisLock: GestureAxisLock = .undecided
 
@@ -15,7 +22,7 @@ final class DeckWKWebView: WKWebView {
     }
 
     override func scrollWheel(with event: NSEvent) {
-        if routeHorizontalScrollToParent {
+        if routeHorizontalScrollToParent && !capturesHorizontalScrollInTopTabRail {
             let horizontal = abs(event.scrollingDeltaX)
             let vertical = abs(event.scrollingDeltaY)
 
@@ -263,6 +270,7 @@ struct WebColumnView: NSViewRepresentable {
         }
 
         if enableChromeStripping {
+            contentController.add(coordinator, name: Coordinator.topTabScrollMessageName)
             contentController.addUserScript(WKUserScript(
                 source: Coordinator.structuralColumnChromeScript,
                 injectionTime: .atDocumentEnd,
@@ -272,6 +280,7 @@ struct WebColumnView: NSViewRepresentable {
         }
 
         let webView = DeckWKWebView(frame: .zero, configuration: configuration)
+        coordinator.deckWebView = webView
         webView.navigationDelegate = coordinator
         webView.uiDelegate = coordinator
         webView.underPageBackgroundColor = .clear
@@ -447,6 +456,7 @@ struct WebColumnView: NSViewRepresentable {
         nsView.uiDelegate = nil
         nsView.configuration.userContentController.removeScriptMessageHandler(forName: Coordinator.mediaMessageName)
         nsView.configuration.userContentController.removeScriptMessageHandler(forName: Coordinator.unreadCountMessageName)
+        nsView.configuration.userContentController.removeScriptMessageHandler(forName: Coordinator.topTabScrollMessageName)
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
@@ -458,6 +468,7 @@ struct WebColumnView: NSViewRepresentable {
 
         static let mediaMessageName = "xflowMediaRequest"
         static let unreadCountMessageName = "xflowUnreadCount"
+        static let topTabScrollMessageName = "xflowTopTabScrollCapture"
 
         static let mediaCaptureScript = """
         (function() {
@@ -708,6 +719,14 @@ struct WebColumnView: NSViewRepresentable {
           style.textContent = `
             :root {
               --mosaic-accent: rgb(231, 216, 190);
+              --mosaic-accent-ink: rgba(34, 28, 21, 0.96);
+              --mosaic-accent-button: rgba(231, 216, 190, 0.94);
+              --mosaic-accent-button-hover: rgba(240, 228, 207, 0.98);
+              --mosaic-post-halo-core: rgba(231, 216, 190, 0.34);
+              --mosaic-post-halo: rgba(231, 216, 190, 0.25);
+              --mosaic-post-halo-core-hover: rgba(231, 216, 190, 0.46);
+              --mosaic-post-halo-hover: rgba(231, 216, 190, 0.34);
+              --mosaic-outline-button-ink: rgba(255, 255, 255, 0.98);
               --mosaic-accent-soft: rgba(231, 216, 190, 0.16);
               --mosaic-accent-line: rgba(231, 216, 190, 0.34);
               --mosaic-ink: rgba(242, 245, 249, 0.94);
@@ -715,9 +734,25 @@ struct WebColumnView: NSViewRepresentable {
               --mosaic-surface: rgba(18, 24, 33, 0.1);
               --mosaic-surface-hover: rgba(202, 220, 235, 0.085);
               --mosaic-inset: rgba(3, 8, 15, 0.2);
-              --mosaic-tab-surface: rgba(18, 24, 33, 0.34);
+              --mosaic-tab-surface: rgba(61, 61, 58, 0.94);
+              --mosaic-composer-surface: rgba(231, 216, 190, 0.11);
+              --mosaic-composer-focus: rgba(231, 216, 190, 0.15);
+              --mosaic-composer-edge: rgba(231, 216, 190, 0.043);
+              --mosaic-composer-hover: rgba(231, 216, 190, 0.11);
               --mosaic-float-surface: rgba(22, 29, 39, 0.76);
+              --mosaic-transient-surface: rgba(63, 62, 57, 0.72);
+              --mosaic-transient-hover: rgba(76, 73, 65, 0.78);
+              --mosaic-transient-border: rgba(231, 216, 190, 0.28);
+              --mosaic-transient-shadow: rgba(0, 0, 0, 0.3);
               --mosaic-media-surface: rgba(3, 8, 15, 0.18);
+              --mosaic-video-control-surface: rgba(7, 10, 15, 0.78);
+              --mosaic-video-control-hover: rgba(7, 10, 15, 0.9);
+              --mosaic-video-control-border: rgba(255, 255, 255, 0.22);
+              --mosaic-video-control-track: rgba(255, 255, 255, 0.48);
+              --mosaic-post-label-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 36'%3E%3Ctext x='40' y='19' text-anchor='middle' dominant-baseline='middle' fill='%23ffffff' font-family='-apple-system,BlinkMacSystemFont,sans-serif' font-size='15' font-weight='700'%3EPost%3C/text%3E%3C/svg%3E");
+              --mosaic-reply-label-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 36'%3E%3Ctext x='40' y='19' text-anchor='middle' dominant-baseline='middle' fill='%23ffffff' font-family='-apple-system,BlinkMacSystemFont,sans-serif' font-size='15' font-weight='700'%3EReply%3C/text%3E%3C/svg%3E");
+              --mosaic-thread-line: rgba(231, 216, 190, 0.42);
+              --mosaic-thread-halo: rgba(231, 216, 190, 0.12);
               --mosaic-hairline: rgba(226, 238, 249, 0.09);
               --mosaic-shadow: rgba(0, 0, 0, 0.2);
               color-scheme: dark;
@@ -753,12 +788,21 @@ struct WebColumnView: NSViewRepresentable {
               border-color: transparent !important;
               background: transparent !important;
               box-shadow: inset 0 -1px 0 var(--mosaic-hairline) !important;
-              transition: background-color 140ms ease-out, filter 140ms ease-out !important;
             }
 
             [data-testid="primaryColumn"] [data-testid="cellInnerDiv"]:hover {
-              background: var(--mosaic-surface-hover) !important;
-              filter: brightness(1.025) saturate(1.035);
+              background: transparent !important;
+              filter: none !important;
+            }
+
+            [data-testid="primaryColumn"] [data-mosaic-thread-connector="true"] {
+              width: 2px !important;
+              min-width: 2px !important;
+              max-width: 2px !important;
+              background: linear-gradient(to bottom, transparent 0%, var(--mosaic-thread-line) 12%, var(--mosaic-thread-line) 88%, transparent 100%) !important;
+              border-radius: 999px !important;
+              box-shadow: 0 0 8px var(--mosaic-thread-halo) !important;
+              opacity: 1 !important;
             }
 
             [data-testid="primaryColumn"] article,
@@ -781,6 +825,12 @@ struct WebColumnView: NSViewRepresentable {
             [data-testid="primaryColumn"] a[href*="/hashtag/"],
             [data-testid="primaryColumn"] a[href*="/search?q="] {
               color: var(--mosaic-accent) !important;
+            }
+
+            [data-testid="primaryColumn"] [data-mosaic-reply-context="true"] a,
+            [data-testid="primaryColumn"] [data-mosaic-reply-context="true"] a:visited {
+              color: var(--mosaic-accent) !important;
+              text-decoration-color: var(--mosaic-accent-line) !important;
             }
 
             [data-testid="primaryColumn"] [data-testid="User-Name"] {
@@ -821,7 +871,7 @@ struct WebColumnView: NSViewRepresentable {
 
             [data-testid="primaryColumn"] input,
             [data-testid="primaryColumn"] textarea,
-            [data-testid="primaryColumn"] [role="textbox"] {
+            [data-testid="primaryColumn"] [role="textbox"]:not([data-testid="tweetTextarea_0"]) {
               border-radius: 12px !important;
               background-color: var(--mosaic-inset) !important;
               box-shadow: inset 0 0 0 1px var(--mosaic-hairline), 0 4px 14px rgba(0, 0, 0, 0.08) !important;
@@ -830,14 +880,285 @@ struct WebColumnView: NSViewRepresentable {
 
             [data-testid="primaryColumn"] input:focus,
             [data-testid="primaryColumn"] textarea:focus,
-            [data-testid="primaryColumn"] [role="textbox"]:focus {
+            [data-testid="primaryColumn"] [role="textbox"]:not([data-testid="tweetTextarea_0"]):focus {
               box-shadow: inset 0 0 0 1px var(--mosaic-accent-line), 0 0 0 3px var(--mosaic-accent-soft) !important;
             }
 
-            [data-testid="primaryColumn"] [role="tablist"] {
-              backdrop-filter: blur(22px) saturate(1.24) !important;
-              background: var(--mosaic-tab-surface) !important;
-              box-shadow: inset 0 -1px 0 var(--mosaic-hairline) !important;
+            [data-testid="primaryColumn"] [data-mosaic-top-tab-shell="true"] {
+              position: relative !important;
+              isolation: isolate !important;
+              z-index: 30 !important;
+              background-color: transparent !important;
+              background-image: none !important;
+              box-shadow: none !important;
+              -webkit-backdrop-filter: none !important;
+              backdrop-filter: none !important;
+            }
+
+            /* Keep the optical material on a stable compositing plane beneath
+               the tab controls. The dense tint prevents independently promoted
+               X text from remaining legible if WebKit skips its backdrop pass. */
+            [data-testid="primaryColumn"] [data-mosaic-top-tab-shell="true"]::before {
+              content: "" !important;
+              position: absolute !important;
+              inset: 0 !important;
+              z-index: 0 !important;
+              pointer-events: none !important;
+              border-radius: inherit !important;
+              background-color: var(--mosaic-tab-surface) !important;
+              box-shadow: inset 0 -1px 0 rgba(231, 216, 190, 0.12), 0 9px 24px rgba(0, 0, 0, 0.055) !important;
+              -webkit-backdrop-filter: blur(64px) saturate(0.78) contrast(0.92) brightness(1.02) !important;
+              backdrop-filter: blur(64px) saturate(0.78) contrast(0.92) brightness(1.02) !important;
+              opacity: 0 !important;
+              transition: opacity 140ms ease-out !important;
+            }
+
+            [data-testid="primaryColumn"] [data-mosaic-top-tab-shell="true"][data-mosaic-column-scrolled="true"]::before {
+              opacity: 1 !important;
+            }
+
+            [data-testid="primaryColumn"] [data-mosaic-top-tab-shell="true"] > * {
+              position: relative !important;
+              z-index: 1 !important;
+            }
+
+            [data-testid="primaryColumn"] [data-mosaic-top-tab-rail="true"] {
+              min-width: 0 !important;
+              overflow-x: auto !important;
+              overflow-y: hidden !important;
+              overscroll-behavior-x: contain !important;
+              scrollbar-width: none !important;
+              touch-action: pan-x !important;
+              scroll-behavior: auto !important;
+              scroll-snap-type: none !important;
+              background: transparent !important;
+              box-shadow: none !important;
+              -webkit-backdrop-filter: none !important;
+              backdrop-filter: none !important;
+            }
+
+            [data-testid="primaryColumn"] [data-mosaic-top-tab-rail="true"]::-webkit-scrollbar {
+              display: none !important;
+            }
+
+            [data-testid="primaryColumn"] [data-mosaic-top-tab-rail="true"] > [role="tab"],
+            [data-testid="primaryColumn"] [data-mosaic-top-tab-rail="true"] [role="tab"] {
+              flex: 0 0 auto !important;
+              scroll-snap-align: none !important;
+            }
+
+            [data-testid="primaryColumn"] [data-mosaic-top-tab-rail="true"][data-mosaic-overflow-left="false"][data-mosaic-overflow-right="true"] {
+              -webkit-mask-image: linear-gradient(to right, black 0, black calc(100% - 34px), transparent 100%);
+            }
+
+            [data-testid="primaryColumn"] [data-mosaic-top-tab-rail="true"][data-mosaic-overflow-left="true"][data-mosaic-overflow-right="false"] {
+              -webkit-mask-image: linear-gradient(to right, transparent 0, black 34px, black 100%);
+            }
+
+            [data-testid="primaryColumn"] [data-mosaic-top-tab-rail="true"][data-mosaic-overflow-left="true"][data-mosaic-overflow-right="true"] {
+              -webkit-mask-image: linear-gradient(to right, transparent 0, black 34px, black calc(100% - 34px), transparent 100%);
+            }
+
+            /* X exposes the inline composer as generic textbox and tablist roles.
+               Keep it visually distinct from search fields and navigation tabs. */
+            [data-testid="primaryColumn"] [data-mosaic-composer="true"] {
+              position: relative !important;
+              isolation: isolate !important;
+              overflow: visible !important;
+              background: transparent !important;
+              box-shadow: none !important;
+              backdrop-filter: none !important;
+            }
+
+            [data-testid="primaryColumn"] [data-mosaic-composer="true"]::before {
+              content: "" !important;
+              position: absolute !important;
+              inset: 14px 10px !important;
+              z-index: -1 !important;
+              pointer-events: none !important;
+              border-radius: 40px !important;
+              background: radial-gradient(ellipse at 46% 48%, var(--mosaic-composer-surface) 0%, var(--mosaic-composer-edge) 50%, transparent 78%) !important;
+              filter: blur(16px) !important;
+              backdrop-filter: blur(12px) saturate(1.08) !important;
+              transition: background 180ms ease-out, filter 180ms ease-out, backdrop-filter 180ms ease-out !important;
+            }
+
+            [data-testid="primaryColumn"] [data-mosaic-composer="true"]:focus-within::before {
+              background: radial-gradient(ellipse at 46% 48%, var(--mosaic-composer-focus) 0%, var(--mosaic-composer-edge) 54%, transparent 80%) !important;
+              filter: blur(18px) !important;
+              backdrop-filter: blur(16px) saturate(1.14) !important;
+            }
+
+            /* X composites disabled controls as a dimmed layer, including their
+               immediate wrappers. Render the visible label on the composer's own
+               plane while retaining X's untouched button for input and accessibility. */
+            [data-testid="primaryColumn"] [data-mosaic-composer="true"]::after {
+              content: "" !important;
+              position: absolute !important;
+              left: var(--mosaic-post-label-left, 0px) !important;
+              top: var(--mosaic-post-label-top, 0px) !important;
+              width: var(--mosaic-post-label-width, 0px) !important;
+              height: var(--mosaic-post-label-height, 0px) !important;
+              z-index: 5 !important;
+              pointer-events: none !important;
+              background-image: var(--mosaic-composer-label-image, var(--mosaic-post-label-image)) !important;
+              background-position: center !important;
+              background-repeat: no-repeat !important;
+              background-size: 100% 100% !important;
+            }
+
+            [data-testid="primaryColumn"] [data-mosaic-composer="true"] a[href] img {
+              box-shadow: 0 0 0 2px var(--mosaic-accent-soft), 0 7px 20px var(--mosaic-shadow) !important;
+            }
+
+            [data-testid="primaryColumn"] [data-testid="tweetTextarea_0"],
+            [data-testid="primaryColumn"] [data-testid="tweetTextarea_0"]:focus {
+              color: var(--mosaic-ink) !important;
+              background: transparent !important;
+              border: 0 !important;
+              border-radius: 0 !important;
+              box-shadow: none !important;
+              backdrop-filter: none !important;
+              outline: none !important;
+              caret-color: var(--mosaic-accent) !important;
+            }
+
+            [data-testid="primaryColumn"] [data-testid="tweetTextarea_0"] [data-text="true"] {
+              color: var(--mosaic-ink) !important;
+            }
+
+            [data-testid="primaryColumn"] [data-testid="tweetTextarea_0"] ~ div[aria-hidden="true"],
+            [data-testid="primaryColumn"] [data-testid="tweetTextarea_0"] div[aria-hidden="true"] {
+              color: var(--mosaic-secondary) !important;
+            }
+
+            [data-testid="primaryColumn"] [data-testid="toolBar"],
+            [data-testid="primaryColumn"] [data-testid="toolBar"] [role="tablist"],
+            [data-testid="primaryColumn"] [role="tablist"]:has([data-testid="toolBar"]),
+            [data-testid="primaryColumn"] [role="tablist"]:has([data-testid="fileInput"]),
+            [data-testid="primaryColumn"] [role="tablist"]:has([data-testid="gifSearchButton"]) {
+              background: transparent !important;
+              border: 0 !important;
+              border-radius: 0 !important;
+              box-shadow: none !important;
+              backdrop-filter: none !important;
+            }
+
+            [data-testid="primaryColumn"] [data-testid="toolBar"] button,
+            [data-testid="primaryColumn"] [data-testid="toolBar"] [role="button"],
+            [data-testid="primaryColumn"] [role="tablist"]:has([data-testid="fileInput"]) button,
+            [data-testid="primaryColumn"] [role="tablist"]:has([data-testid="fileInput"]) [role="button"] {
+              color: var(--mosaic-secondary) !important;
+              border-radius: 999px !important;
+              box-shadow: none !important;
+            }
+
+            [data-testid="primaryColumn"] [data-testid="toolBar"] button:hover,
+            [data-testid="primaryColumn"] [data-testid="toolBar"] [role="button"]:hover,
+            [data-testid="primaryColumn"] [role="tablist"]:has([data-testid="fileInput"]) button:hover,
+            [data-testid="primaryColumn"] [role="tablist"]:has([data-testid="fileInput"]) [role="button"]:hover {
+              color: var(--mosaic-accent) !important;
+              background: var(--mosaic-composer-hover) !important;
+              filter: none !important;
+              transform: none !important;
+            }
+
+            [data-testid="primaryColumn"] [data-testid="toolBar"] button:disabled:not([data-testid="tweetButtonInline"]),
+            [data-testid="primaryColumn"] [data-testid="toolBar"] [aria-disabled="true"]:not([data-testid="tweetButtonInline"]),
+            [data-testid="primaryColumn"] [role="tablist"]:has([data-testid="fileInput"]) button:disabled:not([data-testid="tweetButtonInline"]),
+            [data-testid="primaryColumn"] [role="tablist"]:has([data-testid="fileInput"]) [aria-disabled="true"]:not([data-testid="tweetButtonInline"]) {
+              opacity: 0.3 !important;
+            }
+
+            [data-testid="primaryColumn"] [data-testid="tweetButtonInline"]:disabled,
+            [data-testid="primaryColumn"] [data-testid="tweetButtonInline"][aria-disabled="true"] {
+              color: rgb(255, 255, 255) !important;
+              -webkit-text-fill-color: rgb(255, 255, 255) !important;
+              background: rgb(231, 216, 190) !important;
+              border: 1.5px solid rgba(231, 216, 190, 0.96) !important;
+              outline: none !important;
+              box-shadow: 0 0 5px var(--mosaic-post-halo-core), 0 0 18px var(--mosaic-post-halo), 0 6px 18px var(--mosaic-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+              text-shadow: none !important;
+              font-weight: 700 !important;
+              filter: none !important;
+              opacity: 1 !important;
+            }
+
+            [data-testid="primaryColumn"] [data-testid="tweetButtonInline"]:disabled:hover,
+            [data-testid="primaryColumn"] [data-testid="tweetButtonInline"][aria-disabled="true"]:hover {
+              background: var(--mosaic-accent-soft) !important;
+              box-shadow: 0 0 6px var(--mosaic-post-halo-core-hover), 0 0 22px var(--mosaic-post-halo-hover), 0 7px 20px var(--mosaic-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.24) !important;
+              filter: none !important;
+              transform: none !important;
+            }
+
+            [data-testid="primaryColumn"] [data-mosaic-synthetic-label="true"]:disabled *,
+            [data-testid="primaryColumn"] [data-mosaic-synthetic-label="true"][aria-disabled="true"] * {
+              color: rgb(255, 255, 255) !important;
+              -webkit-text-fill-color: rgb(255, 255, 255) !important;
+              text-shadow: none !important;
+              font-weight: 700 !important;
+              filter: none !important;
+              opacity: 0 !important;
+            }
+
+            [data-testid="primaryColumn"] [data-mosaic-synthetic-label="true"] > * {
+              opacity: 0 !important;
+            }
+
+            [data-testid="primaryColumn"] [data-testid="tweetButtonInline"]:not([data-mosaic-synthetic-label="true"]) > * {
+              color: inherit !important;
+              -webkit-text-fill-color: inherit !important;
+              opacity: 1 !important;
+            }
+
+            [data-testid="primaryColumn"] [data-testid="tweetButtonInline"]:not(:disabled):not([aria-disabled="true"]) {
+              color: rgba(255, 255, 255, 0.98) !important;
+              background-color: var(--mosaic-accent-button) !important;
+              border: 1.5px solid rgba(231, 216, 190, 0.96) !important;
+              box-shadow: 0 0 5px var(--mosaic-post-halo-core), 0 0 18px var(--mosaic-post-halo), 0 7px 20px var(--mosaic-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.22) !important;
+              text-shadow: none !important;
+              opacity: 1 !important;
+            }
+
+            [data-testid="primaryColumn"] [data-testid="tweetButtonInline"]:not(:disabled):not([aria-disabled="true"]) * {
+              color: rgba(255, 255, 255, 0.98) !important;
+              -webkit-text-fill-color: rgba(255, 255, 255, 0.98) !important;
+              text-shadow: none !important;
+            }
+
+            [data-testid="primaryColumn"] [data-testid="tweetButtonInline"]:not(:disabled):not([aria-disabled="true"]):hover {
+              color: rgba(255, 255, 255, 0.98) !important;
+              background-color: var(--mosaic-accent-button-hover) !important;
+              box-shadow: 0 0 6px var(--mosaic-post-halo-core-hover), 0 0 22px var(--mosaic-post-halo-hover), 0 8px 22px var(--mosaic-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+              transform: translateY(-1px) !important;
+            }
+
+            [data-testid="primaryColumn"] [data-mosaic-subscribe-button="true"] {
+              color: var(--mosaic-outline-button-ink) !important;
+              -webkit-text-fill-color: var(--mosaic-outline-button-ink) !important;
+              background: var(--mosaic-accent-soft) !important;
+              border: 1.5px solid rgba(231, 216, 190, 0.96) !important;
+              border-radius: 999px !important;
+              box-shadow: 0 0 6px var(--mosaic-post-halo-core-hover), 0 0 22px var(--mosaic-post-halo-hover), 0 7px 20px var(--mosaic-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.16) !important;
+              text-shadow: none !important;
+              filter: none !important;
+              opacity: 1 !important;
+            }
+
+            [data-testid="primaryColumn"] [data-mosaic-subscribe-button="true"] *,
+            [data-testid="primaryColumn"] [data-mosaic-subscribe-button="true"]:hover * {
+              color: var(--mosaic-outline-button-ink) !important;
+              -webkit-text-fill-color: var(--mosaic-outline-button-ink) !important;
+              background: transparent !important;
+              text-shadow: none !important;
+              opacity: 1 !important;
+            }
+
+            [data-testid="primaryColumn"] [data-mosaic-subscribe-button="true"]:hover {
+              background: rgba(231, 216, 190, 0.22) !important;
+              box-shadow: 0 0 7px var(--mosaic-post-halo-core-hover), 0 0 25px var(--mosaic-post-halo-hover), 0 8px 22px var(--mosaic-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+              transform: translateY(-1px) !important;
             }
 
             [data-testid="primaryColumn"] [role="tab"][aria-selected="true"] {
@@ -884,6 +1205,70 @@ struct WebColumnView: NSViewRepresentable {
               overflow: hidden !important;
             }
 
+            [data-testid="primaryColumn"] [data-testid="videoPlayer"] [data-mosaic-volume-button="true"] {
+              color: rgba(255, 255, 255, 0.98) !important;
+              background-color: var(--mosaic-video-control-surface) !important;
+              border: 1px solid var(--mosaic-video-control-border) !important;
+              border-radius: 999px !important;
+              box-shadow: 0 4px 14px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
+              -webkit-backdrop-filter: blur(14px) saturate(1.18) !important;
+              backdrop-filter: blur(14px) saturate(1.18) !important;
+              filter: none !important;
+              opacity: 1 !important;
+            }
+
+            [data-testid="primaryColumn"] [data-testid="videoPlayer"] [data-mosaic-volume-button="true"]:hover {
+              background-color: var(--mosaic-video-control-hover) !important;
+              filter: none !important;
+            }
+
+            [data-testid="primaryColumn"] [data-testid="videoPlayer"] [data-mosaic-volume-button="true"] *,
+            [data-testid="primaryColumn"] [data-testid="videoPlayer"] [data-mosaic-volume-button="true"] svg,
+            [data-testid="primaryColumn"] [data-testid="videoPlayer"] [data-mosaic-volume-button="true"] path {
+              color: rgba(255, 255, 255, 0.98) !important;
+              fill: currentColor !important;
+              opacity: 1 !important;
+            }
+
+            [data-testid="primaryColumn"] [data-testid="videoPlayer"] [data-mosaic-volume-popover="true"] {
+              background-color: var(--mosaic-video-control-surface) !important;
+              border: 1px solid var(--mosaic-video-control-border) !important;
+              border-radius: 999px !important;
+              box-shadow: 0 5px 16px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
+              -webkit-backdrop-filter: blur(12px) saturate(1.16) !important;
+              backdrop-filter: blur(12px) saturate(1.16) !important;
+              transform: scale(0.68) !important;
+              transform-origin: 50% 100% !important;
+              opacity: 1 !important;
+            }
+
+            [data-testid="primaryColumn"] [data-testid="videoPlayer"] [data-mosaic-volume-slider="true"] {
+              color: rgba(255, 255, 255, 0.98) !important;
+              accent-color: rgba(255, 255, 255, 0.98) !important;
+              background-color: var(--mosaic-video-control-track) !important;
+              border-radius: 999px !important;
+              box-shadow: 0 1px 4px rgba(0, 0, 0, 0.42) !important;
+              filter: none !important;
+              opacity: 1 !important;
+            }
+
+            [data-testid="primaryColumn"] [data-testid="videoPlayer"] [data-mosaic-volume-slider="true"]::-webkit-slider-runnable-track {
+              height: 3px !important;
+              background: var(--mosaic-video-control-track) !important;
+              border-radius: 999px !important;
+            }
+
+            [data-testid="primaryColumn"] [data-testid="videoPlayer"] [data-mosaic-volume-slider="true"]::-webkit-slider-thumb {
+              -webkit-appearance: none !important;
+              width: 10px !important;
+              height: 10px !important;
+              margin-top: -3.5px !important;
+              background: rgba(255, 255, 255, 0.98) !important;
+              border: 1px solid rgba(0, 0, 0, 0.2) !important;
+              border-radius: 999px !important;
+              box-shadow: 0 1px 4px rgba(0, 0, 0, 0.36) !important;
+            }
+
             [role="menu"],
             [data-testid="Dropdown"],
             [data-testid="HoverCard"] {
@@ -892,6 +1277,28 @@ struct WebColumnView: NSViewRepresentable {
               border-radius: 15px !important;
               box-shadow: 0 18px 48px var(--mosaic-shadow) !important;
               backdrop-filter: blur(28px) saturate(1.24) !important;
+            }
+
+            [data-testid="primaryColumn"] [data-mosaic-post-indicator="true"] {
+              color: var(--mosaic-ink) !important;
+              background: var(--mosaic-transient-surface) !important;
+              border: 1px solid var(--mosaic-transient-border) !important;
+              border-radius: 999px !important;
+              box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 10px 28px var(--mosaic-transient-shadow) !important;
+              -webkit-backdrop-filter: blur(30px) saturate(1.22) !important;
+              backdrop-filter: blur(30px) saturate(1.22) !important;
+              overflow: hidden !important;
+              filter: none !important;
+            }
+
+            [data-testid="primaryColumn"] [data-mosaic-post-indicator="true"]:hover {
+              background: var(--mosaic-transient-hover) !important;
+              border-color: var(--mosaic-accent-line) !important;
+              filter: none !important;
+            }
+
+            [data-testid="primaryColumn"] [data-mosaic-post-indicator="true"] * {
+              background-color: transparent !important;
             }
 
             [data-testid="primaryColumn"] a:focus-visible,
@@ -924,16 +1331,30 @@ struct WebColumnView: NSViewRepresentable {
             @media (prefers-color-scheme: light) {
               :root {
                 --mosaic-accent: rgb(113, 94, 65);
+                --mosaic-accent-ink: rgba(255, 252, 247, 0.96);
+                --mosaic-accent-button: rgba(113, 94, 65, 0.92);
+                --mosaic-accent-button-hover: rgba(96, 78, 54, 0.98);
                 --mosaic-accent-soft: rgba(113, 94, 65, 0.12);
                 --mosaic-accent-line: rgba(113, 94, 65, 0.28);
+                --mosaic-outline-button-ink: rgba(58, 46, 32, 0.94);
                 --mosaic-ink: rgba(18, 24, 31, 0.9);
                 --mosaic-secondary: rgba(30, 40, 52, 0.56);
                 --mosaic-surface: rgba(244, 249, 252, 0.08);
                 --mosaic-surface-hover: rgba(255, 255, 252, 0.34);
                 --mosaic-inset: rgba(117, 148, 170, 0.11);
-                --mosaic-tab-surface: rgba(247, 251, 252, 0.38);
+                --mosaic-tab-surface: rgba(247, 248, 246, 0.94);
+                --mosaic-composer-surface: rgba(113, 94, 65, 0.028);
+                --mosaic-composer-focus: rgba(113, 94, 65, 0.043);
+                --mosaic-composer-edge: rgba(113, 94, 65, 0.01);
+                --mosaic-composer-hover: rgba(113, 94, 65, 0.09);
                 --mosaic-float-surface: rgba(244, 249, 251, 0.78);
+                --mosaic-transient-surface: rgba(250, 250, 247, 0.78);
+                --mosaic-transient-hover: rgba(255, 255, 252, 0.88);
+                --mosaic-transient-border: rgba(113, 94, 65, 0.2);
+                --mosaic-transient-shadow: rgba(31, 53, 67, 0.18);
                 --mosaic-media-surface: rgba(226, 237, 244, 0.14);
+                --mosaic-thread-line: rgba(113, 94, 65, 0.34);
+                --mosaic-thread-halo: rgba(113, 94, 65, 0.1);
                 --mosaic-hairline: rgba(35, 67, 88, 0.085);
                 --mosaic-shadow: rgba(31, 53, 67, 0.12);
                 color-scheme: light;
@@ -942,6 +1363,20 @@ struct WebColumnView: NSViewRepresentable {
               [data-testid="primaryColumn"] [data-testid="tweetButton"]:hover,
               [data-testid="primaryColumn"] [data-testid="tweetButtonInline"]:hover {
                 background: rgba(113, 94, 65, 0.18) !important;
+              }
+
+              [data-testid="primaryColumn"] [data-testid="tweetButtonInline"]:disabled,
+              [data-testid="primaryColumn"] [data-testid="tweetButtonInline"][aria-disabled="true"] {
+                color: rgb(255, 255, 255) !important;
+                -webkit-text-fill-color: rgb(255, 255, 255) !important;
+                background-color: rgba(113, 94, 65, 0.24) !important;
+                border-color: rgba(113, 94, 65, 0.92) !important;
+              }
+
+              [data-testid="primaryColumn"] [data-testid="tweetButtonInline"]:disabled *,
+              [data-testid="primaryColumn"] [data-testid="tweetButtonInline"][aria-disabled="true"] * {
+                color: rgb(255, 255, 255) !important;
+                -webkit-text-fill-color: rgb(255, 255, 255) !important;
               }
             }
 
@@ -952,10 +1387,14 @@ struct WebColumnView: NSViewRepresentable {
                 --mosaic-inset: rgba(8, 13, 20, 0.94);
                 --mosaic-tab-surface: rgba(27, 34, 44, 0.97);
                 --mosaic-float-surface: rgba(27, 34, 44, 0.98);
+                --mosaic-transient-surface: rgba(43, 46, 45, 0.98);
+                --mosaic-transient-hover: rgba(52, 54, 51, 0.99);
               }
 
               [data-testid="primaryColumn"],
-              [data-testid="primaryColumn"] [role="tablist"],
+              [data-testid="primaryColumn"] [data-mosaic-top-tab-shell="true"]::before,
+              [data-testid="primaryColumn"] [data-mosaic-post-indicator="true"],
+              [data-testid="primaryColumn"] [data-mosaic-composer="true"]::before,
               [role="menu"],
               [data-testid="Dropdown"],
               [data-testid="HoverCard"] {
@@ -967,6 +1406,394 @@ struct WebColumnView: NSViewRepresentable {
               [data-testid="primaryColumn"] * { transition-duration: 0.001ms !important; }
             }
           `;
+
+          function markInlineComposers() {
+            if (typeof document.querySelectorAll !== 'function') return;
+            document.querySelectorAll('[data-mosaic-synthetic-label="true"]').forEach(button => {
+              delete button.dataset.mosaicSyntheticLabel;
+            });
+            document.querySelectorAll('[data-mosaic-composer="true"]').forEach(composer => {
+              delete composer.dataset.mosaicComposer;
+              composer.style.removeProperty('--mosaic-post-label-left');
+              composer.style.removeProperty('--mosaic-post-label-top');
+              composer.style.removeProperty('--mosaic-post-label-width');
+              composer.style.removeProperty('--mosaic-post-label-height');
+              composer.style.removeProperty('--mosaic-composer-label-image');
+            });
+            document.querySelectorAll('[data-testid="tweetTextarea_0"]').forEach(editor => {
+              const primaryColumn = editor.closest('[data-testid="primaryColumn"]');
+              let candidate = editor.parentElement;
+              while (candidate && candidate !== primaryColumn) {
+                const hasPostButton = candidate.querySelector('[data-testid="tweetButtonInline"]');
+                const hasMediaControls = candidate.querySelector('[data-testid="fileInput"], [data-testid="gifSearchButton"]');
+                if (hasPostButton && hasMediaControls) {
+                  let composer = candidate;
+                  let ancestor = candidate.parentElement;
+                  for (let level = 0; ancestor && ancestor !== primaryColumn && level < 4; level += 1) {
+                    if (ancestor.querySelector('a[href] img')) {
+                      composer = ancestor;
+                      break;
+                    }
+                    ancestor = ancestor.parentElement;
+                  }
+                  composer.dataset.mosaicComposer = 'true';
+                  const actionLabel = [
+                    hasPostButton.getAttribute('aria-label') || '',
+                    hasPostButton.innerText || hasPostButton.textContent || ''
+                  ].join(' ').trim();
+                  const isReplyAction = /(^|\\s)reply(\\s|$)/i.test(actionLabel);
+                  hasPostButton.dataset.mosaicSyntheticLabel = 'true';
+                  composer.style.setProperty(
+                    '--mosaic-composer-label-image',
+                    isReplyAction ? 'var(--mosaic-reply-label-image)' : 'var(--mosaic-post-label-image)'
+                  );
+                  const composerRect = composer.getBoundingClientRect();
+                  const buttonRect = hasPostButton.getBoundingClientRect();
+                  composer.style.setProperty('--mosaic-post-label-left', `${buttonRect.left - composerRect.left}px`);
+                  composer.style.setProperty('--mosaic-post-label-top', `${buttonRect.top - composerRect.top}px`);
+                  composer.style.setProperty('--mosaic-post-label-width', `${buttonRect.width}px`);
+                  composer.style.setProperty('--mosaic-post-label-height', `${buttonRect.height}px`);
+                  break;
+                }
+                candidate = candidate.parentElement;
+              }
+            });
+          }
+
+          function isTopNavigationTabList(tabList) {
+            if (!tabList || !tabList.closest || !tabList.querySelectorAll) return false;
+            if (!tabList.closest('[data-testid="primaryColumn"]')) return false;
+            if (tabList.closest('article, [data-testid="cellInnerDiv"], [data-testid="tweet"], [data-testid="toolBar"], [data-mosaic-composer="true"]')) return false;
+            if (tabList.querySelectorAll('[role="tab"]').length < 2) return false;
+            if (tabList.querySelector('[data-testid="fileInput"], [data-testid="gifSearchButton"]')) return false;
+            return true;
+          }
+
+          function updateTopTabOverflow(tabList) {
+            if (!tabList || !tabList.dataset) return false;
+            const maxScroll = Math.max(0, tabList.scrollWidth - tabList.clientWidth);
+            tabList.dataset.mosaicOverflowLeft = tabList.scrollLeft > 2 ? 'true' : 'false';
+            tabList.dataset.mosaicOverflowRight = tabList.scrollLeft < maxScroll - 2 ? 'true' : 'false';
+            return maxScroll > 2;
+          }
+
+          function findTopTabShell(tabList) {
+            const primaryColumn = tabList.closest('[data-testid="primaryColumn"]');
+            if (!primaryColumn || !tabList.getBoundingClientRect) return tabList.parentElement || tabList;
+            const tabRect = tabList.getBoundingClientRect();
+            const maximumHeight = Math.max(92, tabRect.height + 34);
+            let best = tabList.parentElement || tabList;
+            let bestWidth = tabRect.width;
+            let candidate = best;
+            for (let level = 0; candidate && candidate !== primaryColumn && level < 5; level += 1) {
+              const rect = candidate.getBoundingClientRect();
+              if (rect.height > maximumHeight) break;
+              if (rect.width >= bestWidth - 1) {
+                best = candidate;
+                bestWidth = rect.width;
+              }
+              candidate = candidate.parentElement;
+            }
+            return best;
+          }
+
+          function markTopTabRails() {
+            if (typeof document.querySelectorAll !== 'function') return;
+            const activeRails = new Set();
+            const activeShells = new Set();
+            document.querySelectorAll('[role="tablist"]').forEach(tabList => {
+              if (!isTopNavigationTabList(tabList)) return;
+              activeRails.add(tabList);
+              tabList.dataset.mosaicTopTabRail = 'true';
+              const shell = findTopTabShell(tabList);
+              activeShells.add(shell);
+              shell.dataset.mosaicTopTabShell = 'true';
+              updateTopTabOverflow(tabList);
+            });
+            document.querySelectorAll('[data-mosaic-top-tab-rail="true"]').forEach(rail => {
+              if (activeRails.has(rail)) return;
+              delete rail.dataset.mosaicTopTabRail;
+              delete rail.dataset.mosaicOverflowLeft;
+              delete rail.dataset.mosaicOverflowRight;
+            });
+            document.querySelectorAll('[data-mosaic-top-tab-shell="true"]').forEach(shell => {
+              if (activeShells.has(shell)) return;
+              delete shell.dataset.mosaicTopTabShell;
+              delete shell.dataset.mosaicColumnScrolled;
+            });
+            updateTopTabScrollState();
+          }
+
+          function updateTopTabScrollState() {
+            if (typeof document.querySelectorAll !== 'function') return;
+            const scrollingElement = document.scrollingElement || document.documentElement;
+            const scrollOffset = Math.max(
+              Number(window.scrollY) || 0,
+              Number(scrollingElement && scrollingElement.scrollTop) || 0
+            );
+            const wasScrolled = globalThis.__mosaicColumnScrolled === true;
+            const isScrolled = wasScrolled ? scrollOffset > 2 : scrollOffset > 12;
+            globalThis.__mosaicColumnScrolled = isScrolled;
+            const shells = Array.from(document.querySelectorAll('[data-mosaic-top-tab-shell="true"]'));
+            shells.forEach(shell => {
+              shell.dataset.mosaicColumnScrolled = isScrolled ? 'true' : 'false';
+            });
+          }
+
+          function accessibleControlLabel(node) {
+            if (!node || !node.getAttribute) return '';
+            return [
+              node.getAttribute('aria-label') || '',
+              node.getAttribute('title') || '',
+              node.getAttribute('data-testid') || ''
+            ].join(' ').toLowerCase();
+          }
+
+          function markVideoVolumeControls() {
+            if (typeof document.querySelectorAll !== 'function') return;
+            document.querySelectorAll('[data-testid="videoPlayer"]').forEach(player => {
+              const controls = Array.from(player.querySelectorAll('button, [role="button"], [role="slider"], input[type="range"]'));
+              const volumeButtons = controls.filter(control => /mute|unmute|volume/.test(accessibleControlLabel(control)) && control.getAttribute('role') !== 'slider' && control.tagName !== 'INPUT');
+              volumeButtons.forEach(button => {
+                button.dataset.mosaicVolumeButton = 'true';
+              });
+
+              const explicitSliders = controls.filter(control => {
+                const isSlider = control.getAttribute('role') === 'slider' || control.tagName === 'INPUT';
+                return isSlider && /volume|mute|unmute/.test(accessibleControlLabel(control));
+              });
+
+              volumeButtons.forEach(button => {
+                let candidate = button.parentElement;
+                for (let level = 0; candidate && candidate !== player && level < 4; level += 1) {
+                  const nearbySlider = candidate.querySelector('[role="slider"], input[type="range"]');
+                  const rect = candidate.getBoundingClientRect ? candidate.getBoundingClientRect() : null;
+                  if (nearbySlider && (!rect || (rect.width <= 150 && rect.height <= 220))) {
+                    explicitSliders.push(nearbySlider);
+                    break;
+                  }
+                  candidate = candidate.parentElement;
+                }
+              });
+
+              explicitSliders.forEach(slider => {
+                slider.dataset.mosaicVolumeSlider = 'true';
+                let popover = slider.parentElement;
+                let bestPopover = null;
+                for (let level = 0; popover && popover !== player && level < 3; level += 1) {
+                  const rect = popover.getBoundingClientRect ? popover.getBoundingClientRect() : null;
+                  if (!rect || (rect.width <= 150 && rect.height <= 220)) {
+                    bestPopover = popover;
+                  } else {
+                    break;
+                  }
+                  popover = popover.parentElement;
+                }
+                if (bestPopover) bestPopover.dataset.mosaicVolumePopover = 'true';
+              });
+            });
+          }
+
+          function markConversationConnectors() {
+            if (typeof document.querySelectorAll !== 'function') return;
+            document.querySelectorAll('[data-mosaic-thread-connector="true"]').forEach(node => {
+              delete node.dataset.mosaicThreadConnector;
+            });
+
+            document.querySelectorAll('[data-testid="tweet"]').forEach(tweet => {
+              const avatar = tweet.querySelector('[data-testid="Tweet-User-Avatar"]') || tweet.querySelector('a[href] img');
+              if (!avatar || !avatar.getBoundingClientRect) return;
+              const avatarRect = avatar.getBoundingClientRect();
+              const candidates = new Set();
+              let scope = avatar.parentElement;
+              for (let level = 0; scope && scope !== tweet && level < 5; level += 1) {
+                scope.querySelectorAll('div').forEach(node => candidates.add(node));
+                scope = scope.parentElement;
+              }
+
+              candidates.forEach(node => {
+                if (!node.getBoundingClientRect || node.contains(avatar) || (node.textContent || '').trim()) return;
+                const rect = node.getBoundingClientRect();
+                const centerDelta = Math.abs((rect.left + rect.width / 2) - (avatarRect.left + avatarRect.width / 2));
+                const isThreadStroke = rect.width >= 1 && rect.width <= 5 && rect.height >= 12 && centerDelta <= 4;
+                const isOutsideAvatar = rect.bottom <= avatarRect.top + 3 || rect.top >= avatarRect.bottom - 3;
+                if (isThreadStroke && isOutsideAvatar) node.dataset.mosaicThreadConnector = 'true';
+              });
+            });
+          }
+
+          function markReplyContexts() {
+            if (typeof document.querySelectorAll !== 'function') return;
+            document.querySelectorAll('[data-mosaic-reply-context="true"]').forEach(node => {
+              delete node.dataset.mosaicReplyContext;
+            });
+
+            document.querySelectorAll('[data-testid="tweet"]').forEach(tweet => {
+              tweet.querySelectorAll('div[dir="ltr"], span[dir="ltr"]').forEach(node => {
+                if (node.closest('[data-testid="tweetText"]')) return;
+                const text = (node.textContent || '').trim();
+                if (!/^replying to(?:\\s|$)/i.test(text)) return;
+                const mentionLinks = Array.from(node.querySelectorAll('a[href]')).filter(link => {
+                  const label = (link.textContent || '').trim();
+                  return label.startsWith('@');
+                });
+                if (mentionLinks.length > 0) node.dataset.mosaicReplyContext = 'true';
+              });
+            });
+          }
+
+          function markTransientPostIndicators() {
+            if (typeof document.querySelectorAll !== 'function') return;
+            document.querySelectorAll('[data-mosaic-post-indicator="true"]').forEach(node => {
+              delete node.dataset.mosaicPostIndicator;
+            });
+
+            document.querySelectorAll('[data-testid="primaryColumn"] button, [data-testid="primaryColumn"] [role="button"]').forEach(control => {
+              if (control.closest('article, [data-testid="tweet"], [data-testid="cellInnerDiv"], [data-mosaic-composer="true"], [data-mosaic-top-tab-shell="true"]')) return;
+              const text = ((control.innerText || control.textContent) || '').trim().replace(/\\s+/g, ' ');
+              if (!/(^|\\s)posted$/i.test(text) || !control.querySelector('img')) return;
+              const rect = control.getBoundingClientRect ? control.getBoundingClientRect() : null;
+              if (rect && (rect.width < 80 || rect.width > 430 || rect.height < 32 || rect.height > 112)) return;
+              control.dataset.mosaicPostIndicator = 'true';
+            });
+          }
+
+          function markSubscribeButtons() {
+            if (typeof document.querySelectorAll !== 'function') return;
+            document.querySelectorAll('[data-mosaic-subscribe-button="true"]').forEach(control => {
+              delete control.dataset.mosaicSubscribeButton;
+            });
+
+            document.querySelectorAll('[data-testid="primaryColumn"] button, [data-testid="primaryColumn"] [role="button"]').forEach(control => {
+              if (control.closest('[data-mosaic-composer="true"], [data-mosaic-top-tab-shell="true"]')) return;
+              const text = ((control.innerText || control.textContent) || '').trim().replace(/\\s+/g, ' ');
+              if (!/^subscribed?$/i.test(text)) return;
+              if (control.querySelector('button, [role="button"]')) return;
+              const rect = control.getBoundingClientRect ? control.getBoundingClientRect() : null;
+              if (rect && (rect.width < 64 || rect.width > 240 || rect.height < 24 || rect.height > 72)) return;
+              control.dataset.mosaicSubscribeButton = 'true';
+            });
+          }
+
+          function postTopTabCapture(active) {
+            try {
+              const handler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.xflowTopTabScrollCapture;
+              if (handler) handler.postMessage(Boolean(active));
+            } catch (_) {}
+          }
+
+          const topTabMotion = new WeakMap();
+
+          function cancelTopTabGlide(tabList) {
+            const motion = topTabMotion.get(tabList);
+            if (!motion) return;
+            if (motion.frame) cancelAnimationFrame(motion.frame);
+            motion.velocity = 0;
+            motion.frame = 0;
+            motion.lastTime = 0;
+          }
+
+          function queueTopTabGlide(tabList, delta) {
+            const maximum = Math.max(0, tabList.scrollWidth - tabList.clientWidth);
+            let motion = topTabMotion.get(tabList);
+            if (!motion) {
+              motion = { velocity: 0, frame: 0, lastTime: 0 };
+              topTabMotion.set(tabList, motion);
+            }
+            const impulse = Math.max(-120, Math.min(120, delta));
+            motion.velocity = Math.max(-38, Math.min(38, motion.velocity + impulse * 0.22));
+            if (motion.frame) return;
+            motion.lastTime = performance.now();
+
+            function glide(timestamp) {
+              const elapsed = Math.min(32, Math.max(8, timestamp - motion.lastTime));
+              const frameScale = elapsed / 16.667;
+              motion.lastTime = timestamp;
+              const previous = tabList.scrollLeft;
+              const next = Math.max(0, Math.min(maximum, previous + motion.velocity * frameScale));
+              tabList.scrollLeft = next;
+              updateTopTabOverflow(tabList);
+
+              const hitBoundary = (next <= 0 && motion.velocity < 0) ||
+                (next >= maximum && motion.velocity > 0);
+              motion.velocity *= Math.pow(0.84, frameScale);
+              if (Math.abs(motion.velocity) < 0.12 || hitBoundary) {
+                motion.velocity = 0;
+                motion.frame = 0;
+                return;
+              }
+              motion.frame = requestAnimationFrame(glide);
+            }
+
+            motion.frame = requestAnimationFrame(glide);
+          }
+
+          function installTopTabInteraction() {
+            if (globalThis.__mosaicTopTabHandlers || typeof document.addEventListener !== 'function') return;
+            const handlers = {
+              pointerover(event) {
+                const tabList = event.target && event.target.closest && event.target.closest('[data-mosaic-top-tab-rail="true"]');
+                if (tabList) postTopTabCapture(updateTopTabOverflow(tabList));
+              },
+              pointerout(event) {
+                const tabList = event.target && event.target.closest && event.target.closest('[data-mosaic-top-tab-rail="true"]');
+                if (tabList && (!event.relatedTarget || !tabList.contains(event.relatedTarget))) postTopTabCapture(false);
+              },
+              wheel(event) {
+                const tabList = event.target && event.target.closest && event.target.closest('[data-mosaic-top-tab-rail="true"]');
+                if (!tabList || !updateTopTabOverflow(tabList)) return;
+                postTopTabCapture(true);
+                const horizontalIntent = Math.abs(event.deltaX) >= Math.abs(event.deltaY);
+                if (horizontalIntent) {
+                  cancelTopTabGlide(tabList);
+                  event.stopPropagation();
+                  requestAnimationFrame(() => updateTopTabOverflow(tabList));
+                  return;
+                }
+                const delta = event.deltaY;
+                if (!Number.isFinite(delta) || Math.abs(delta) < 0.01) return;
+                event.preventDefault();
+                event.stopPropagation();
+                const deltaScale = event.deltaMode === 1 ? 18 : (event.deltaMode === 2 ? tabList.clientWidth * 0.82 : 1);
+                queueTopTabGlide(tabList, delta * deltaScale);
+              },
+              scroll(event) {
+                const tabList = event.target && event.target.closest && event.target.closest('[data-mosaic-top-tab-rail="true"]');
+                if (tabList) updateTopTabOverflow(tabList);
+                updateTopTabScrollState();
+              }
+            };
+            document.addEventListener('pointerover', handlers.pointerover, true);
+            document.addEventListener('pointerout', handlers.pointerout, true);
+            document.addEventListener('wheel', handlers.wheel, { capture: true, passive: false });
+            document.addEventListener('scroll', handlers.scroll, true);
+            globalThis.__mosaicTopTabHandlers = handlers;
+          }
+
+          markInlineComposers();
+          markTopTabRails();
+          markVideoVolumeControls();
+          markConversationConnectors();
+          markReplyContexts();
+          markTransientPostIndicators();
+          markSubscribeButtons();
+          installTopTabInteraction();
+          if (!globalThis.__mosaicComposerObserver && typeof MutationObserver !== 'undefined' && document.body) {
+            globalThis.__mosaicComposerObserver = new MutationObserver(() => {
+              if (globalThis.__mosaicRefreshFrame) return;
+              globalThis.__mosaicRefreshFrame = requestAnimationFrame(() => {
+                globalThis.__mosaicRefreshFrame = 0;
+                markInlineComposers();
+                markTopTabRails();
+                markVideoVolumeControls();
+                markConversationConnectors();
+                markReplyContexts();
+                markTransientPostIndicators();
+                markSubscribeButtons();
+              });
+            });
+            globalThis.__mosaicComposerObserver.observe(document.body, { childList: true, subtree: true });
+          }
           document.documentElement.dataset.mosaicAppearance = 'integrated';
           return 'mosaic-integrated';
         })();
@@ -976,6 +1803,70 @@ struct WebColumnView: NSViewRepresentable {
         (function() {
           const style = document.getElementById('mosaic-integrated-column-style');
           if (style) style.remove();
+          if (globalThis.__mosaicComposerObserver) {
+            globalThis.__mosaicComposerObserver.disconnect();
+            delete globalThis.__mosaicComposerObserver;
+          }
+          if (globalThis.__mosaicRefreshFrame) {
+            cancelAnimationFrame(globalThis.__mosaicRefreshFrame);
+            delete globalThis.__mosaicRefreshFrame;
+          }
+          delete globalThis.__mosaicColumnScrolled;
+          if (globalThis.__mosaicTopTabHandlers && typeof document.removeEventListener === 'function') {
+            const handlers = globalThis.__mosaicTopTabHandlers;
+            document.removeEventListener('pointerover', handlers.pointerover, true);
+            document.removeEventListener('pointerout', handlers.pointerout, true);
+            document.removeEventListener('wheel', handlers.wheel, true);
+            document.removeEventListener('scroll', handlers.scroll, true);
+            delete globalThis.__mosaicTopTabHandlers;
+          }
+          try {
+            const handler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.xflowTopTabScrollCapture;
+            if (handler) handler.postMessage(false);
+          } catch (_) {}
+          if (typeof document.querySelectorAll === 'function') {
+            document.querySelectorAll('[data-mosaic-composer="true"]').forEach(node => {
+              delete node.dataset.mosaicComposer;
+              node.style.removeProperty('--mosaic-post-label-left');
+              node.style.removeProperty('--mosaic-post-label-top');
+              node.style.removeProperty('--mosaic-post-label-width');
+              node.style.removeProperty('--mosaic-post-label-height');
+              node.style.removeProperty('--mosaic-composer-label-image');
+            });
+            document.querySelectorAll('[data-mosaic-synthetic-label="true"]').forEach(node => {
+              delete node.dataset.mosaicSyntheticLabel;
+            });
+            document.querySelectorAll('[data-mosaic-top-tab-rail="true"]').forEach(node => {
+              delete node.dataset.mosaicTopTabRail;
+              delete node.dataset.mosaicOverflowLeft;
+              delete node.dataset.mosaicOverflowRight;
+            });
+            document.querySelectorAll('[data-mosaic-top-tab-shell="true"]').forEach(node => {
+              delete node.dataset.mosaicTopTabShell;
+              delete node.dataset.mosaicColumnScrolled;
+            });
+            document.querySelectorAll('[data-mosaic-volume-button="true"]').forEach(node => {
+              delete node.dataset.mosaicVolumeButton;
+            });
+            document.querySelectorAll('[data-mosaic-volume-slider="true"]').forEach(node => {
+              delete node.dataset.mosaicVolumeSlider;
+            });
+            document.querySelectorAll('[data-mosaic-volume-popover="true"]').forEach(node => {
+              delete node.dataset.mosaicVolumePopover;
+            });
+            document.querySelectorAll('[data-mosaic-thread-connector="true"]').forEach(node => {
+              delete node.dataset.mosaicThreadConnector;
+            });
+            document.querySelectorAll('[data-mosaic-reply-context="true"]').forEach(node => {
+              delete node.dataset.mosaicReplyContext;
+            });
+            document.querySelectorAll('[data-mosaic-post-indicator="true"]').forEach(node => {
+              delete node.dataset.mosaicPostIndicator;
+            });
+            document.querySelectorAll('[data-mosaic-subscribe-button="true"]').forEach(node => {
+              delete node.dataset.mosaicSubscribeButton;
+            });
+          }
           if (document.documentElement) delete document.documentElement.dataset.mosaicAppearance;
           return 'original-x';
         })();
@@ -1059,6 +1950,7 @@ struct WebColumnView: NSViewRepresentable {
         var onPageTitle: ((String?) -> Void)?
         var onMediaRequest: ((MediaRequest) -> Void)?
         var onUnreadNotificationCountChanged: ((Int, String?) -> Void)?
+        weak var deckWebView: DeckWKWebView?
         var columnAppearanceMode: ColumnAppearanceMode
         var appliedColumnAppearanceMode: ColumnAppearanceMode?
         var enableHandleDetection: Bool
@@ -1297,6 +2189,12 @@ struct WebColumnView: NSViewRepresentable {
                     return
                 }
                 onMediaRequest?(request)
+                return
+            }
+
+            if message.name == Self.topTabScrollMessageName {
+                let isCapturing = (message.body as? NSNumber)?.boolValue ?? (message.body as? Bool) ?? false
+                deckWebView?.capturesHorizontalScrollInTopTabRail = isCapturing
                 return
             }
 
