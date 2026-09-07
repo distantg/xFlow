@@ -1,7 +1,7 @@
 {
-  "latestVersion": "2.0.2",
-  "publishedAt": "2026-09-07T12:44:23Z",
-  "downloadURL": "https://github.com/distantg/xFlow/releases/tag/v2.0.2",
-  "releaseNotes": "Mosaic 2.0.2 fixes signed-in account detection and List discovery, adds automatic edge scrolling while reordering columns, improves Grok with a back button and a frosted composer, and adds pinch-to-zoom with panning for expanded images.",
+  "latestVersion": "2.1",
+  "publishedAt": "2026-09-07T22:21:36Z",
+  "downloadURL": "https://github.com/distantg/xFlow/releases/tag/v2.1",
+  "releaseNotes": "Mosaic 2.1 adds signed automatic updates, separate Apple Silicon and Intel update feeds, and update controls in Settings. Install this release manually once to enable future automatic downloads and installation on quit.",
   "minimumSupportedVersion": "1.0"
 }

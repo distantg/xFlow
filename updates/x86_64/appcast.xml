@@ -1,0 +1,23 @@
+<?xml version="1.0" standalone="yes"?><!-- sparkle-sign-warning:
+IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires re-signing this file with generate_appcast or sign_update! The signed signature will be embedded at the end of this file.
+--><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>Mosaic</title>
+        <item>
+            <title>2.1</title>
+            <pubDate>Mon, 07 Sep 2026 15:17:13 -0700</pubDate>
+            <link>https://github.com/distantg/xFlow/releases</link>
+            <sparkle:version>171</sparkle:version>
+            <sparkle:shortVersionString>2.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h2>Mosaic 2.1</h2>
+<p>Mosaic can now download and install updates automatically when you quit. Enable automatic updates in Settings, or choose Check for Updates to install and relaunch immediately.</p>
+<p>This release requires one manual installation for users upgrading from Mosaic 2.0.2 or earlier. Accounts, sessions, layouts, and preferences are preserved.</p>
+]]></description>
+            <enclosure url="https://github.com/distantg/xFlow/releases/download/v2.1/Mosaic-2.1-171-x86_64.zip" length="8757582" type="application/octet-stream" sparkle:edSignature="iaY17sYDbQ5RJmGI56OCHlwj5nR4Sgzd7BfQjYd6/ngh2wEo+6CVBFRuHciqwDjAPtDhJiuRc+C+MTkRhBFBAQ=="></enclosure>
+        </item>
+    </channel>
+</rss><!-- sparkle-signatures:
+edSignature: X5nTA74lqLBt8Z8wxvrNSji5PsuUNAV+7DQ6Sza9KTsQ0z/PruqJigVfidZEb6KIgyZb+FvqanU6aO8vPDx6Dg==
+length: 1525
+-->

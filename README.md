@@ -8,8 +8,8 @@ It gives you a persistent column deck for home, notifications, search, messages,
 
 Use the version that matches your Mac:
 
-- **Apple Silicon**: M1, M2, M3, M4, or newer
-- **Intel**: older Intel-based Macs
+- **[Apple Silicon download](https://github.com/distantg/xFlow/releases/download/v2.1/Mosaic-AppleSilicon.dmg)**: M1, M2, M3, M4, or newer
+- **[Intel download](https://github.com/distantg/xFlow/releases/download/v2.1/Mosaic-Intel.dmg)**: older Intel-based Macs
 
 If you are not sure which Mac you have, open **Apple menu > About This Mac**. If it says **Chip**, use Apple Silicon. If it says **Processor: Intel**, use Intel.
 
