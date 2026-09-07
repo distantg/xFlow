@@ -205,6 +205,7 @@ final class DeckWebColumnHostView: NSView {
     private(set) var webView: DeckWKWebView?
     private var lifecycleGeneration = 0
     private var isHibernating = false
+    private var isParked = false
     private(set) var wantsLiveContent = false
 
     override init(frame frameRect: NSRect) {
@@ -228,7 +229,9 @@ final class DeckWebColumnHostView: NSView {
     func install(_ webView: DeckWKWebView) {
         lifecycleGeneration += 1
         isHibernating = false
+        isParked = false
         self.webView = webView
+        snapshotView.image = nil
         snapshotView.isHidden = true
         webView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(webView)
@@ -246,14 +249,16 @@ final class DeckWebColumnHostView: NSView {
         }
         wantsLiveContent = true
         isHibernating = false
+        isParked = false
         webView?.isHidden = false
+        snapshotView.image = nil
         snapshotView.isHidden = true
     }
 
     func park(captureState: @escaping (WKWebView, @escaping () -> Void) -> Void) {
         wantsLiveContent = false
         guard let webView else { return }
-        guard !isHibernating else { return }
+        guard !isHibernating, !isParked else { return }
         isHibernating = true
         lifecycleGeneration += 1
         let generation = lifecycleGeneration
@@ -279,6 +284,7 @@ final class DeckWebColumnHostView: NSView {
                 // explicitly suspended by WebColumnView.
                 webView.isHidden = true
                 self.isHibernating = false
+                self.isParked = true
             }
         }
     }
@@ -287,6 +293,9 @@ final class DeckWebColumnHostView: NSView {
         lifecycleGeneration += 1
         wantsLiveContent = false
         isHibernating = false
+        isParked = false
+        snapshotView.image = nil
+        snapshotView.isHidden = true
         guard let webView else { return }
         teardown(webView)
         webView.removeFromSuperview()

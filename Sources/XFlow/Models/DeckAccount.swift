@@ -296,28 +296,34 @@ final class WebSessionPool {
                 delegateQueue: nil
             )
 
-            session.dataTask(with: request) { data, response, _ in
-                defer { session.finishTasksAndInvalidate() }
-
-                let responseIsTrusted = (response as? HTTPURLResponse).map { response in
-                    (200...299).contains(response.statusCode) &&
-                        response.url.map(TrustedURLPolicy.isTrustedXPage) == true
-                } ?? false
-
+            Task { @MainActor in
+                defer { session.invalidateAndCancel() }
                 let parsed: AccountProfileMeta?
-                if responseIsTrusted,
-                   let data,
-                   data.count <= 2 * 1024 * 1024,
-                   let html = String(data: data, encoding: .utf8) {
-                    parsed = Self.parseProfileMetaFromHTML(html)
-                } else {
+                do {
+                    let (bytes, response) = try await session.bytes(for: request)
+                    let maximumBytes = 2 * 1024 * 1024
+                    guard let httpResponse = response as? HTTPURLResponse,
+                          (200...299).contains(httpResponse.statusCode),
+                          httpResponse.url.map(TrustedURLPolicy.isTrustedXPage) == true,
+                          response.expectedContentLength < 0 || response.expectedContentLength <= maximumBytes else {
+                        throw URLError(.badServerResponse)
+                    }
+                    // Enforce the limit while downloading, before a large response
+                    // can be buffered in full by URLSession.
+                    var data = Data()
+                    data.reserveCapacity(min(maximumBytes, max(0, Int(response.expectedContentLength))))
+                    for try await byte in bytes {
+                        guard data.count < maximumBytes else {
+                            throw URLError(.dataLengthExceedsMaximum)
+                        }
+                        data.append(byte)
+                    }
+                    parsed = String(data: data, encoding: .utf8).flatMap(Self.parseProfileMetaFromHTML)
+                } catch {
                     parsed = nil
                 }
-
-                DispatchQueue.main.async {
-                    completion(parsed)
-                }
-            }.resume()
+                completion(parsed)
+            }
         }
     }
 
