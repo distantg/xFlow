@@ -406,9 +406,6 @@ private struct SidebarAppearancePopover: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Appearance")
                     .font(.system(size: 15, weight: .bold, design: .rounded))
-                Text("Two looks. One uninterrupted deck.")
-                    .font(.caption)
-                    .foregroundStyle(MosaicTheme.secondaryText(for: colorScheme))
             }
 
             VStack(alignment: .leading, spacing: 7) {
@@ -442,12 +439,14 @@ private struct SidebarAppearancePopover: View {
                     height: 29
                 ) { mode in
                     HStack(spacing: 6) {
-                        Image(systemName: mode.symbolName)
-                            .symbolRenderingMode(.monochrome)
-                            .font(.system(size: 10.5, weight: .semibold))
-                            .frame(width: 13, height: 13)
+                        if mode != .originalX {
+                            Image(systemName: mode.symbolName)
+                                .symbolRenderingMode(.monochrome)
+                                .font(.system(size: 10.5, weight: .semibold))
+                                .frame(width: 13, height: 13)
+                        }
 
-                        Text(mode == .originalX ? "Original X" : "Integrated")
+                        Text(mode.title)
                     }
                 }
 

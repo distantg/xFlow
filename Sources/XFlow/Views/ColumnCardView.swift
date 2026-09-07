@@ -28,7 +28,10 @@ struct ColumnCardView: View {
     let onDetectedProfileImage: (URL?) -> Void
     let onPageTitle: (String?) -> Void
     let onMediaRequest: (MediaRequest) -> Void
-    let onUnreadNotificationCountChanged: ((Int, String?) -> Void)?
+    let onUnreadNotificationCountChanged: ((Int, NotificationActivity?) -> Void)?
+
+    var notificationNavigationURL: URL? = nil
+    var onInitialContentReady: (() -> Void)? = nil
 
     @State private var localRefreshSignal = UUID()
     @State private var isHoveringHandle = false
@@ -44,7 +47,7 @@ struct ColumnCardView: View {
             header
 
             WebColumnView(
-                url: column.url,
+                url: notificationNavigationURL ?? column.url,
                 refreshKey: refreshKey,
                 accountID: activeAccountID,
                 filter: column.filter,
@@ -58,13 +61,14 @@ struct ColumnCardView: View {
                 enableHandleDetection: column.type.allowsAccountMetadataDetection,
                 enableAccountTextHandleDetection: column.type == .notifications,
                 isLive: isWebViewLive,
-                isMediaSuspended: isMediaSuspended
+                isMediaSuspended: isMediaSuspended,
+                onInitialContentReady: onInitialContentReady
             )
             .id("\(column.id.uuidString)-\(activeAccountID.uuidString)")
             .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-            .padding(.horizontal, 6)
             .padding(.bottom, 6)
         }
+        .clipShape(RoundedRectangle(cornerRadius: MosaicTheme.Radius.tile, style: .continuous))
         .background(
             MosaicSurface(level: .tile, cornerRadius: MosaicTheme.Radius.tile)
         )
@@ -188,24 +192,23 @@ struct ColumnCardView: View {
                             isHoveringHandle = hovering
                         }
                     }
-                    .highPriorityGesture(
-                        DragGesture(minimumDistance: 2, coordinateSpace: .global)
-                            .onChanged { value in
-                                if !isReorderHandleActive {
-                                    withAnimation(.easeInOut(duration: 0.09)) {
-                                        isReorderHandleActive = true
-                                    }
+                    .overlay {
+                        ColumnReorderDragCapture(
+                            onStart: {
+                                withAnimation(MosaicMotion.micro(reduceMotion: reduceMotion)) {
+                                    isReorderHandleActive = true
                                 }
                                 onReorderDragStart()
-                                onReorderDragChanged(value.location.x - value.startLocation.x)
-                            }
-                            .onEnded { _ in
-                                withAnimation(.easeInOut(duration: 0.11)) {
+                            },
+                            onChange: onReorderDragChanged,
+                            onEnd: {
+                                withAnimation(MosaicMotion.micro(reduceMotion: reduceMotion)) {
                                     isReorderHandleActive = false
                                 }
                                 onReorderDragEnded()
                             }
-                    )
+                        )
+                    }
                     .help("Drag to reorder")
                     .opacity(isHoveringColumn || isReorderHandleActive ? 1 : 0.48)
             }
@@ -337,5 +340,53 @@ struct ColumnCardView: View {
 
     private var labelColor: Color {
         colorScheme == .dark ? .white : .black
+    }
+}
+
+/// Own the mouse sequence even when the handle overlaps the transparent titlebar.
+private struct ColumnReorderDragCapture: NSViewRepresentable {
+    let onStart: () -> Void
+    let onChange: (CGFloat) -> Void
+    let onEnd: () -> Void
+
+    func makeNSView(context: Context) -> CaptureView { CaptureView() }
+
+    func updateNSView(_ view: CaptureView, context: Context) {
+        view.onStart = onStart
+        view.onChange = onChange
+        view.onEnd = onEnd
+    }
+
+    final class CaptureView: NSView {
+        var onStart: (() -> Void)?
+        var onChange: ((CGFloat) -> Void)?
+        var onEnd: (() -> Void)?
+        private var startX: CGFloat?
+        override var mouseDownCanMoveWindow: Bool { false }
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+        override func mouseDown(with event: NSEvent) {
+            startX = NSEvent.mouseLocation.x
+            onStart?()
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            guard let startX else { return }
+            onChange?(NSEvent.mouseLocation.x - startX)
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            guard startX != nil else { return }
+            startX = nil
+            onEnd?()
+        }
+
+        override func viewWillMove(toWindow newWindow: NSWindow?) {
+            if newWindow == nil, startX != nil {
+                startX = nil
+                onEnd?()
+            }
+            super.viewWillMove(toWindow: newWindow)
+        }
     }
 }

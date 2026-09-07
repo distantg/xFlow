@@ -97,9 +97,9 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.4.9</string>
+    <string>2.0</string>
     <key>CFBundleVersion</key>
-    <string>87</string>
+    <string>103</string>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.social-networking</string>
     <key>LSMinimumSystemVersion</key>
@@ -140,6 +140,8 @@ if [[ -f "$APP_ICON_PNG" ]] && sips -g pixelWidth -g pixelHeight "$APP_ICON_PNG"
 else
   echo "No valid AppIcon.png found at $APP_ICON_PNG (skipping custom icon)."
 fi
+
+cp "$ROOT_DIR/Resources/SplashBackground.png" "$APP_DIR/Contents/Resources/SplashBackground.png"
 
 cp "$CONTAINER_MIGRATION_FILE" "$APP_DIR/Contents/Resources/container-migration.plist"
 

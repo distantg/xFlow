@@ -371,9 +371,11 @@ const server = http.createServer(async (req, res) => {
       const title = sanitizedText(payload.title, "New X Notification", 80);
       const body = sanitizedText(payload.body, "Open Mosaic to view account activity.", 240);
 
+      const subtitle = sanitizedText(payload.subtitle, "", 80);
       const apnsPayload = {
         aps: {
-          alert: { title, body },
+          alert: { title, subtitle, body },
+          "thread-id": `mosaic-account-${accountID}`,
           sound: "default"
         },
         xflowAccountID: accountID

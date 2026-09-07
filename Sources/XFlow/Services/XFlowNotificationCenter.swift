@@ -9,6 +9,7 @@ final class XFlowNotificationCenter: NSObject, ObservableObject {
     private weak var store: DeckStore?
     private var lastObservedUnreadByAccount: [UUID: Int] = [:]
     private var pendingAccountSwitchID: UUID?
+    private var pendingTargetURL: URL?
     private var apnsTokenHex: String?
     private let backendClient = XFlowPushBackendClient()
 
@@ -24,8 +25,9 @@ final class XFlowNotificationCenter: NSObject, ObservableObject {
         syncRemoteRouting(accounts: store.accounts, activeAccountID: store.activeAccountID)
 
         if let pendingAccountSwitchID {
-            activateAccount(accountID: pendingAccountSwitchID)
+            activateAccount(accountID: pendingAccountSwitchID, targetURL: pendingTargetURL)
             self.pendingAccountSwitchID = nil
+            pendingTargetURL = nil
         }
     }
 
@@ -42,48 +44,33 @@ final class XFlowNotificationCenter: NSObject, ObservableObject {
         }
     }
 
-    func publishUnreadNotification(count: Int, account: DeckAccount, activity: String? = nil) {
-        let previousCount = lastObservedUnreadByAccount[account.id] ?? 0
-        lastObservedUnreadByAccount[account.id] = count
-        guard count > previousCount else {
-            return
-        }
+    func observeUnreadBaseline(count: Int, accountID: UUID) {
+        lastObservedUnreadByAccount[accountID] = count
+    }
+
+    func publishUnreadNotification(count: Int, account: DeckAccount, activity: NotificationActivity? = nil) {
+        let previousCount = lastObservedUnreadByAccount.updateValue(count, forKey: account.id)
+        guard let previousCount, count > previousCount else { return }
 
         let content = UNMutableNotificationContent()
         let handle = account.handle.map { "@\($0)" } ?? account.name
-        let delta = max(1, count - previousCount)
-        let normalizedActivity = activity?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        let bodyText: String
-        if let normalizedActivity, !normalizedActivity.isEmpty {
-            if delta == 1 {
-                bodyText = "Account \(handle) has \(normalizedActivity)."
-            } else {
-                bodyText = "Account \(handle) has \(delta) updates. Latest: \(normalizedActivity)."
-            }
-        } else {
-            if delta == 1 {
-                bodyText = "Account \(handle) has new activity."
-            } else {
-                bodyText = "Account \(handle) has \(delta) new notifications."
-            }
-        }
-
-        content.title = "New X Notification"
-        content.body = bodyText
+        let delta = count - previousCount
+        content.title = activity?.title ?? (delta == 1 ? "New notification" : "\(delta) new notifications")
+        content.subtitle = handle
+        content.body = activity?.body ?? "Open Notifications to see the latest updates."
+        content.threadIdentifier = "mosaic-account-\(account.id.uuidString)"
         content.sound = .default
-        content.userInfo = [
-            "accountID": account.id.uuidString
-        ]
+        content.userInfo = ["accountID": account.id.uuidString]
+        if let targetURL = activity?.targetURL { content.userInfo["targetURL"] = targetURL.absoluteString }
 
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 0.15, repeats: false)
         let request = UNNotificationRequest(
-            identifier: "xflow-notif-\(account.id.uuidString)-\(count)",
+            identifier: "mosaic-activity-\(account.id.uuidString)-\(UUID().uuidString)",
             content: content,
-            trigger: trigger
+            trigger: nil
         )
-        UNUserNotificationCenter.current().add(request)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error { NSLog("Mosaic notification delivery failed: \(error.localizedDescription)") }
+        }
     }
 
     func didRegisterForRemoteNotifications(deviceToken: Data) {
@@ -114,21 +101,22 @@ final class XFlowNotificationCenter: NSObject, ObservableObject {
     }
 
     func handleIncomingRemoteNotification(userInfo: [AnyHashable: Any]) {
-        if let accountID = accountID(from: userInfo) {
-            activateAccount(accountID: accountID)
-        }
+        // Delivery alone must not steal focus or switch the user's current account.
+        // The notification response delegate handles explicit clicks, including cold launch.
     }
 
     private func handleNotificationResponse(_ response: UNNotificationResponse) {
         guard let accountID = accountID(from: response.notification.request.content.userInfo) else {
             return
         }
-        activateAccount(accountID: accountID)
+        let targetURL = NotificationActivity.validatedTargetURL(response.notification.request.content.userInfo["targetURL"] as? String)
+        activateAccount(accountID: accountID, targetURL: targetURL)
     }
 
-    private func activateAccount(accountID: UUID) {
+    private func activateAccount(accountID: UUID, targetURL: URL? = nil) {
         guard let store else {
             pendingAccountSwitchID = accountID
+            pendingTargetURL = targetURL
             return
         }
         guard store.account(with: accountID) != nil else {
@@ -137,7 +125,7 @@ final class XFlowNotificationCenter: NSObject, ObservableObject {
 
         NSApp.activate(ignoringOtherApps: true)
         store.switchAccount(to: accountID)
-        store.focusOrAddNotificationsColumnFromSystemEvent()
+        store.focusOrAddNotificationsColumnFromSystemEvent(targetURL: targetURL)
     }
 
     private func accountID(from userInfo: [AnyHashable: Any]) -> UUID? {

@@ -20,8 +20,58 @@ final class ColumnAppearanceTests: XCTestCase {
         XCTAssertEqual(ColumnAppearancePreference.load(from: defaults), .originalX)
     }
 
+    func testLaunchSessionRequiresSignedInUIAndWaitsThroughDialogs() throws {
+        let context = try XCTUnwrap(JSContext())
+        context.evaluateScript("""
+        let login = false, account = false, primary = false, dialog = false;
+        const document = {readyState: 'complete', querySelector(selector) {
+          if (selector.startsWith('input')) return login ? {} : null;
+          if (selector.includes('AccountSwitcher')) return account ? {} : null;
+          if (selector.includes('primaryColumn')) return primary ? {} : null;
+          if (selector.includes('dialog')) return dialog ? {} : null;
+        }};
+        """)
+        let script = WebColumnView.Coordinator.launchSessionStateScript
+        XCTAssertEqual(context.evaluateScript(script)?.toString(), "waiting")
+        context.evaluateScript("primary = true")
+        XCTAssertEqual(context.evaluateScript(script)?.toString(), "waiting")
+        context.evaluateScript("account = true; dialog = true")
+        XCTAssertEqual(context.evaluateScript(script)?.toString(), "waiting")
+        context.evaluateScript("dialog = false")
+        XCTAssertEqual(context.evaluateScript(script)?.toString(), "authenticated")
+        context.evaluateScript("login = true")
+        XCTAssertEqual(context.evaluateScript(script)?.toString(), "login")
+        context.evaluateScript("document.readyState = 'loading'")
+        XCTAssertEqual(context.evaluateScript(script)?.toString(), "waiting")
+    }
+
+    func testLaunchReadinessWaitsForContentAndVisibleImages() throws {
+        let context = try XCTUnwrap(JSContext())
+        context.evaluateScript("""
+        let hasPrimary = false, hasContent = false, imageComplete = false;
+        const innerHeight = 760;
+        const image = { get complete() { return imageComplete; },
+          getBoundingClientRect: () => ({top: 100, bottom: 200}) };
+        const primary = {querySelector: () => hasContent ? {} : null,
+          querySelectorAll: () => [image]};
+        const document = {readyState: 'complete', querySelector: () => hasPrimary ? primary : null};
+        """)
+        let script = WebColumnView.Coordinator.initialContentReadyScript
+        XCTAssertFalse(context.evaluateScript(script)?.toBool() ?? true, "SSO without a timeline must stay covered")
+        context.evaluateScript("hasPrimary = true")
+        XCTAssertFalse(context.evaluateScript(script)?.toBool() ?? true, "An empty app shell is not ready")
+        context.evaluateScript("hasContent = true")
+        XCTAssertFalse(context.evaluateScript(script)?.toBool() ?? true, "Visible images are still loading")
+        context.evaluateScript("imageComplete = true")
+        XCTAssertTrue(context.evaluateScript(script)?.toBool() ?? false)
+        context.evaluateScript("document.readyState = 'loading'")
+        XCTAssertFalse(context.evaluateScript(script)?.toBool() ?? true)
+    }
+
     func testAppearanceScriptsHaveValidJavaScriptSyntax() throws {
         for script in [
+            WebColumnView.Coordinator.launchSessionStateScript,
+            WebColumnView.Coordinator.initialContentReadyScript,
             WebColumnView.Coordinator.structuralColumnChromeScript,
             WebColumnView.Coordinator.integratedColumnThemeScript,
             WebColumnView.Coordinator.removeIntegratedColumnThemeScript

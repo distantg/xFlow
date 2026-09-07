@@ -11,7 +11,7 @@ enum ColumnAppearanceMode: String, Codable, CaseIterable, Identifiable {
         case .originalX:
             return "Original X"
         case .mosaicIntegrated:
-            return "Mosaic Integrated"
+            return "Mosaic"
         }
     }
 

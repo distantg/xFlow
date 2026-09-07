@@ -16,6 +16,13 @@ struct MainDeckView: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.controlActiveState) private var controlActiveState
 
+    @State private var isLaunchSplashVisible = true
+    @State private var launchReadyColumns: Set<UUID> = []
+    @State private var allowsLaunchContinue = false
+    @State private var hasPresentedLaunchSplash = false
+    @State private var hasFinishedLaunchPresentation = false
+    @State private var hasRestoredLaunchSession = false
+
     @State private var settingsColumnID: UUID?
     @State private var draggingColumnID: UUID?
     @State private var dragTranslation: CGFloat = 0
@@ -83,9 +90,58 @@ struct MainDeckView: View {
             }
             .ignoresSafeArea(.container, edges: .top)
             .background(deckGlassBackground)
+            .accessibilityHidden(isLaunchSplashVisible)
+        }
+        .overlay {
+            if isLaunchSplashVisible && !hasRestoredLaunchSession {
+                WebColumnView(
+                    url: URL(string: "https://x.com/home")!,
+                    refreshKey: "launch-session",
+                    accountID: store.activeAccountID,
+                    filter: .none,
+                    enableChromeStripping: false,
+                    enableMediaCapture: false,
+                    enableHandleDetection: false,
+                    routeHorizontalScrollToParent: false,
+                    isMediaSuspended: true,
+                    onLaunchSessionResolved: { authenticated in
+                        store.completeLaunchSessionRestoration(accountID: store.activeAccountID, authenticated: authenticated)
+                        hasRestoredLaunchSession = true
+                    }
+                )
+                .frame(width: 920, height: 720)
+                .opacity(0)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
+        }
+        .task(id: hasPresentedLaunchSplash) {
+            guard hasPresentedLaunchSplash else { return }
+            // Only reveal after visible content has rendered. Slow connections
+            // offer an explicit escape inside the splash instead of exposing preload UI.
+            do {
+                try await Task.sleep(nanoseconds: 2_000_000_000)
+                var checks = 0
+                while isLaunchSplashVisible && !isLaunchContentReady {
+                    try await Task.sleep(nanoseconds: 100_000_000)
+                    checks += 1
+                    if checks >= 130 { allowsLaunchContinue = true }
+                }
+                dismissLaunchSplash()
+            } catch { /* A cancelled launch must not schedule a later reveal. */ }
         }
         .overlay(alignment: .topLeading) {
-            TransparentWindowConfigurator()
+            TransparentWindowConfigurator(
+                isLaunching: isLaunchSplashVisible,
+                reduceMotion: reduceMotion,
+                allowsContinue: allowsLaunchContinue,
+                onContinue: dismissLaunchSplash,
+                onSplashPresented: { hasPresentedLaunchSplash = true },
+                onSplashDismissed: {
+                    // Session restoration has already finished behind the splash.
+                    hasFinishedLaunchPresentation = true
+                }
+            )
                 .frame(width: 0, height: 0)
         }
         .overlay {
@@ -150,7 +206,6 @@ struct MainDeckView: View {
         .onAppear {
             XFlowNotificationCenter.shared.configure(with: store)
             updateManager.startAutomaticChecks()
-            store.refreshAuthenticationState(for: store.activeAccountID, shouldPromptIfNeeded: true)
         }
         .onChange(of: store.accounts) { accounts in
             XFlowNotificationCenter.shared.syncRemoteRouting(
@@ -166,6 +221,22 @@ struct MainDeckView: View {
         }
         .onChange(of: store.layoutResetSignal) { _ in
             beginLayoutResetReveal()
+        }
+    }
+
+    private var isLaunchContentReady: Bool {
+        guard hasRestoredLaunchSession else { return false }
+        if store.columns.isEmpty || store.activeAccount?.requiresLogin == true { return true }
+        let expected = liveColumnIDs.isEmpty
+            ? Set(store.columns.prefix(3).map(\.id)) : liveColumnIDs
+        return expected.isSubset(of: launchReadyColumns)
+    }
+
+    private func dismissLaunchSplash() {
+        // An explicit slow-load escape may bypass restoration; normal launch cannot.
+        if allowsLaunchContinue { hasRestoredLaunchSession = true }
+        withAnimation(.easeInOut(duration: reduceMotion ? 0.15 : 0.5)) {
+            isLaunchSplashVisible = false
         }
     }
 
@@ -187,22 +258,22 @@ struct MainDeckView: View {
                 .fill(
                     colorScheme == .dark
                         ? Color(red: 0.07, green: 0.085, blue: 0.105)
-                            .opacity(controlActiveState == .inactive ? 0.12 : 0.065)
+                            .opacity(controlActiveState == .inactive ? 0.06 : 0.025)
                         : Color(red: 0.96, green: 0.945, blue: 0.91)
-                            .opacity(controlActiveState == .inactive ? 0.12 : 0.07)
+                            .opacity(controlActiveState == .inactive ? 0.035 : 0.0105)
                 )
 
             LinearGradient(
                 colors: colorScheme == .dark
                     ? [
-                        Color(red: 0.34, green: 0.43, blue: 0.52).opacity(0.07),
+                        Color(red: 0.34, green: 0.43, blue: 0.52).opacity(0.045),
                         Color.clear,
                         Color(red: 0.45, green: 0.35, blue: 0.25).opacity(0.025)
                     ]
                     : [
-                        Color(red: 1.0, green: 0.94, blue: 0.82).opacity(0.09),
+                        Color(red: 1.0, green: 0.94, blue: 0.82).opacity(0.0315),
                         Color.clear,
-                        Color(red: 0.73, green: 0.84, blue: 0.9).opacity(0.075)
+                        Color(red: 0.73, green: 0.84, blue: 0.9).opacity(0.0245)
                     ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -222,7 +293,9 @@ struct MainDeckView: View {
 
     @ViewBuilder
     private func contentBody(columnHeight: CGFloat, viewportSize: CGSize) -> some View {
-        if activeAccountNeedsLogin {
+        if !hasRestoredLaunchSession {
+            Color.clear
+        } else if activeAccountNeedsLogin {
             AccountLockedDeckView(
                 accountName: store.activeAccount?.name ?? "Account",
                 onOpenLogin: {
@@ -379,7 +452,11 @@ struct MainDeckView: View {
             onUnreadNotificationCountChanged: notificationHandler(
                 for: column,
                 accountID: renderAccountID
-            )
+            ),
+            notificationNavigationURL: store.notificationNavigationURLs[column.id],
+            onInitialContentReady: isLaunchSplashVisible ? {
+                launchReadyColumns.insert(column.id)
+            } : nil
         )
         .id(column.id)
         .transition(
@@ -390,15 +467,15 @@ struct MainDeckView: View {
         )
         .frame(width: column.width, height: columnHeight)
         .offset(x: dragOffset(for: column.id))
-        .scaleEffect(draggingColumnID == column.id ? 1.018 : 1)
+        .scaleEffect(draggingColumnID == column.id && !isColumnDragSettling && !reduceMotion ? 1.012 : 1)
         .zIndex(draggingColumnID == column.id ? 15 : 0)
         .shadow(
-            color: Color.black.opacity(draggingColumnID == column.id ? 0.3 : 0),
-            radius: draggingColumnID == column.id ? 26 : 0,
+            color: Color.black.opacity(draggingColumnID == column.id && !isColumnDragSettling ? 0.24 : 0),
+            radius: draggingColumnID == column.id && !isColumnDragSettling ? 22 : 0,
             x: 0,
-            y: draggingColumnID == column.id ? 14 : 0
+            y: draggingColumnID == column.id && !isColumnDragSettling ? 10 : 0
         )
-        .animation(.easeOut(duration: 0.14), value: draggingColumnID == column.id)
+        .animation(MosaicMotion.micro(reduceMotion: reduceMotion), value: draggingColumnID == column.id)
         .background {
             GeometryReader { proxy in
                 Color.clear.preference(
@@ -439,7 +516,7 @@ struct MainDeckView: View {
     private func notificationHandler(
         for column: DeckColumn,
         accountID: UUID
-    ) -> ((Int, String?) -> Void)? {
+    ) -> ((Int, NotificationActivity?) -> Void)? {
         guard column.type == .notifications else {
             return nil
         }
@@ -631,7 +708,7 @@ struct MainDeckView: View {
             return
         }
 
-        withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.86)) {
+        withAnimation(MosaicMotion.structural(reduceMotion: reduceMotion)) {
             dragTargetIndex = newTargetIndex
         }
     }
@@ -641,13 +718,14 @@ struct MainDeckView: View {
             return
         }
 
-        isColumnDragSettling = true
         let landingOffset = landingOffsetForDraggedColumn()
-        withAnimation(.easeOut(duration: 0.18)) {
+        let duration = reduceMotion ? 0.12 : 0.36
+        withAnimation(.timingCurve(0.22, 1, 0.36, 1, duration: duration)) {
+            isColumnDragSettling = true
             dragTranslation = landingOffset
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
             commitColumnDrag(columnID)
         }
     }
@@ -759,12 +837,14 @@ struct MainDeckView: View {
     private var loginAccountBinding: Binding<DeckAccount?> {
         Binding<DeckAccount?>(
             get: {
-                guard let accountID = store.presentedLoginAccountID else {
+                guard hasFinishedLaunchPresentation,
+                      let accountID = store.presentedLoginAccountID else {
                     return nil
                 }
                 return store.account(with: accountID)
             },
             set: { value in
+                guard hasFinishedLaunchPresentation else { return }
                 if let value {
                     store.presentLoginFlow(for: value.id)
                 } else {

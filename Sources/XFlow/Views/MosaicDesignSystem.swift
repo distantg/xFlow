@@ -40,7 +40,8 @@ enum MosaicTheme {
 /// A real macOS backdrop: it samples the windows and desktop below Mosaic rather
 /// than drawing an imitation environment inside the app.
 struct MosaicBackdrop: NSViewRepresentable {
-    var material: NSVisualEffectView.Material = .underWindowBackground
+    // Sidebar material carries more of the desktop color through the shared blur.
+    var material: NSVisualEffectView.Material = .sidebar
 
     func makeNSView(context: Context) -> NSVisualEffectView {
         let view = NSVisualEffectView()
@@ -88,6 +89,10 @@ struct MosaicSurface: View {
             .overlay(
                 shape
                     .strokeBorder(rimLight, lineWidth: 0.75)
+                    .shadow(
+                        color: reduceTransparency ? .clear : glowColor.opacity(edgeGlowOpacity),
+                        radius: colorScheme == .dark ? 3 : 5
+                    )
             )
             .shadow(
                 color: depthShadow,
@@ -96,11 +101,24 @@ struct MosaicSurface: View {
                 y: level == .base ? 0 : 2
             )
             .shadow(
-                color: isSelected ? MosaicTheme.activeAccent(for: colorScheme).opacity(controlActiveState == .inactive ? 0.07 : 0.16) : .clear,
+                color: isSelected ? glowColor.opacity(controlActiveState == .inactive ? 0.08 : 0.22) : .clear,
                 radius: isSelected ? 10 : 0,
                 x: 0,
                 y: 2
             )
+    }
+
+    // Light glass needs a chromatic halo: a white bloom disappears on pale surfaces.
+    private var glowColor: Color {
+        colorScheme == .dark
+            ? MosaicTheme.accent
+            : Color(red: 0.82, green: 0.62, blue: 0.34)
+    }
+
+    private var edgeGlowOpacity: Double {
+        guard level != .base else { return 0 }
+        let opacity = colorScheme == .dark ? 0.08 : 0.18
+        return opacity * (controlActiveState == .inactive ? 0.45 : 1)
     }
 
     private var materialFill: AnyShapeStyle {
@@ -131,11 +149,12 @@ struct MosaicSurface: View {
         case .base:
             return 1
         case .tile:
-            return colorScheme == .dark ? 0.76 : 0.62
+            // Broad reading surfaces should preserve the shared backdrop.
+            return colorScheme == .dark ? 0.38 : 0.126
         case .raised:
-            return colorScheme == .dark ? 0.84 : 0.74
+            return colorScheme == .dark ? 0.80 : 0.476
         case .overlay:
-            return colorScheme == .dark ? 0.92 : 0.86
+            return colorScheme == .dark ? 0.92 : 0.602
         }
     }
 
@@ -144,7 +163,7 @@ struct MosaicSurface: View {
         let levelOpacity: Double
         switch level {
         case .base: levelOpacity = colorScheme == .dark ? 0.026 : 0.022
-        case .tile: levelOpacity = colorScheme == .dark ? 0.038 : 0.065
+        case .tile: levelOpacity = colorScheme == .dark ? 0.03 : 0.035
         case .raised: levelOpacity = colorScheme == .dark ? 0.056 : 0.086
         case .overlay: levelOpacity = colorScheme == .dark ? 0.074 : 0.11
         }
@@ -152,7 +171,8 @@ struct MosaicSurface: View {
         let tint = colorScheme == .dark
             ? Color(red: 0.28, green: 0.33, blue: 0.38)
             : Color(red: 0.88, green: 0.93, blue: 0.955)
-        return tint.opacity((levelOpacity + stateBoost) * inactiveMultiplier)
+        let transparencyMultiplier = colorScheme == .light && !reduceTransparency ? 0.7 : 1.0
+        return tint.opacity((levelOpacity + stateBoost) * inactiveMultiplier * transparencyMultiplier)
     }
 
     private var borderColor: Color {

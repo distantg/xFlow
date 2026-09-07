@@ -304,7 +304,7 @@ struct WebColumnView: NSViewRepresentable {
     var onDetectedProfileImage: ((URL?) -> Void)? = nil
     var onPageTitle: ((String?) -> Void)? = nil
     var onMediaRequest: ((MediaRequest) -> Void)? = nil
-    var onUnreadNotificationCountChanged: ((Int, String?) -> Void)? = nil
+    var onUnreadNotificationCountChanged: ((Int, NotificationActivity?) -> Void)? = nil
     var enableChromeStripping: Bool = true
     var enableMediaCapture: Bool = true
     var enableHandleDetection: Bool = true
@@ -314,6 +314,8 @@ struct WebColumnView: NSViewRepresentable {
     var routeHorizontalScrollToParent: Bool = true
     var isLive: Bool = true
     var isMediaSuspended: Bool = false
+    var onInitialContentReady: (() -> Void)? = nil
+    var onLaunchSessionResolved: ((Bool) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
@@ -460,6 +462,8 @@ struct WebColumnView: NSViewRepresentable {
         coordinator.onNavigation = onNavigation
         coordinator.onDetectedHandle = onDetectedHandle
         coordinator.onDetectedProfileImage = onDetectedProfileImage
+        coordinator.onLaunchSessionResolved = onLaunchSessionResolved
+        coordinator.onInitialContentReady = onInitialContentReady
         coordinator.onPageTitle = onPageTitle
         coordinator.onMediaRequest = onMediaRequest
         coordinator.onUnreadNotificationCountChanged = onUnreadNotificationCountChanged
@@ -785,6 +789,7 @@ struct WebColumnView: NSViewRepresentable {
                 max-width: none !important;
               }
               [data-testid="primaryColumn"] {
+                border-left: none !important;
                 border-right: none !important;
                 width: 100% !important;
                 max-width: none !important;
@@ -1001,8 +1006,8 @@ struct WebColumnView: NSViewRepresentable {
               opacity: 1 !important;
               transform: translate3d(0, 0, 0) !important;
               transition:
-                opacity 180ms ease-out,
-                transform 220ms cubic-bezier(0.22, 1, 0.36, 1) !important;
+                opacity 240ms ease-out,
+                transform 420ms cubic-bezier(0.22, 0.8, 0.25, 1) !important;
               background-color: transparent !important;
               background-image: none !important;
               box-shadow: none !important;
@@ -1017,6 +1022,10 @@ struct WebColumnView: NSViewRepresentable {
             [data-testid="primaryColumn"] [data-mosaic-top-tab-shell="true"][data-mosaic-column-menu-visible="false"] {
               opacity: 0 !important;
               transform: translate3d(0, calc(-100% - 8px), 0) !important;
+              /* Stay solid through the first part of travel, then fade away. */
+              transition:
+                opacity 180ms ease-out 100ms,
+                transform 320ms cubic-bezier(0.4, 0, 0.6, 1) !important;
               pointer-events: none !important;
             }
 
@@ -1031,19 +1040,21 @@ struct WebColumnView: NSViewRepresentable {
               pointer-events: none !important;
               border-radius: inherit !important;
               background-color: var(--mosaic-tab-surface) !important;
-              box-shadow: inset 0 -1px 0 rgba(231, 216, 190, 0.12), 0 9px 24px rgba(0, 0, 0, 0.055) !important;
+              box-shadow: inset 0 -1px 0 rgba(231, 216, 190, 0.12), 0 8px 20px var(--mosaic-shadow) !important;
               -webkit-backdrop-filter: blur(64px) saturate(0.78) contrast(0.92) brightness(1.02) !important;
               backdrop-filter: blur(64px) saturate(0.78) contrast(0.92) brightness(1.02) !important;
               opacity: 0 !important;
-              transition: opacity 140ms ease-out !important;
+              transition: opacity 240ms ease-out !important;
             }
 
             [data-testid="primaryColumn"] [data-mosaic-top-tab-shell="true"][data-mosaic-column-scrolled="true"]::before {
               opacity: 1 !important;
             }
 
+            /* Preserve X's positioned header children and their spacer geometry.
+               Forcing relative positioning can put an absolute header back in
+               flow and reserve its height twice above the inline composer. */
             [data-testid="primaryColumn"] [data-mosaic-top-tab-shell="true"] > * {
-              position: relative !important;
               z-index: 1 !important;
             }
 
@@ -1237,7 +1248,8 @@ struct WebColumnView: NSViewRepresentable {
               opacity: 1 !important;
             }
 
-            [data-testid="primaryColumn"] [data-testid="tweetButtonInline"]:not(:disabled):not([aria-disabled="true"]) {
+            [data-testid="primaryColumn"] [data-testid="tweetButtonInline"]:not(:disabled):not([aria-disabled="true"]),
+            [data-testid="primaryColumn"] :is(button, [role="button"]):is([data-testid$="-follow"], [data-testid$="-unfollow"]):not(:disabled):not([aria-disabled="true"]) {
               color: rgba(255, 255, 255, 0.98) !important;
               background-color: var(--mosaic-accent-button) !important;
               border: 1.5px solid rgba(231, 216, 190, 0.96) !important;
@@ -1246,17 +1258,39 @@ struct WebColumnView: NSViewRepresentable {
               opacity: 1 !important;
             }
 
-            [data-testid="primaryColumn"] [data-testid="tweetButtonInline"]:not(:disabled):not([aria-disabled="true"]) * {
+            [data-testid="primaryColumn"] [data-testid="tweetButtonInline"]:not(:disabled):not([aria-disabled="true"]) *,
+            [data-testid="primaryColumn"] :is(button, [role="button"]):is([data-testid$="-follow"], [data-testid$="-unfollow"]):not(:disabled):not([aria-disabled="true"]) * {
               color: rgba(255, 255, 255, 0.98) !important;
               -webkit-text-fill-color: rgba(255, 255, 255, 0.98) !important;
               text-shadow: none !important;
             }
 
-            [data-testid="primaryColumn"] [data-testid="tweetButtonInline"]:not(:disabled):not([aria-disabled="true"]):hover {
+            [data-testid="primaryColumn"] [data-testid="tweetButtonInline"]:not(:disabled):not([aria-disabled="true"]):hover,
+            [data-testid="primaryColumn"] :is(button, [role="button"]):is([data-testid$="-follow"], [data-testid$="-unfollow"]):not(:disabled):not([aria-disabled="true"]):hover {
               color: rgba(255, 255, 255, 0.98) !important;
               background-color: var(--mosaic-accent-button-hover) !important;
               box-shadow: 0 0 6px var(--mosaic-post-halo-core-hover), 0 0 22px var(--mosaic-post-halo-hover), 0 8px 22px var(--mosaic-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
               transform: translateY(-1px) !important;
+            }
+
+            /* Follow IDs change to -unfollow after following; retain X's own
+               text, confirmation flow, and disabled state throughout. */
+            [data-testid="primaryColumn"] :is(button, [role="button"]):is([data-testid$="-follow"], [data-testid$="-unfollow"]) {
+              border-radius: 999px !important;
+              font-weight: 700 !important;
+            }
+
+            [data-testid="primaryColumn"] :is(button, [role="button"]):is([data-testid$="-follow"], [data-testid$="-unfollow"]):disabled,
+            [data-testid="primaryColumn"] :is(button, [role="button"]):is([data-testid$="-follow"], [data-testid$="-unfollow"])[aria-disabled="true"] {
+              color: var(--mosaic-outline-button-ink) !important;
+              background: var(--mosaic-accent-soft) !important;
+              border: 1.5px solid var(--mosaic-accent-line) !important;
+              opacity: 0.5 !important;
+            }
+
+            [data-testid="primaryColumn"] :is(button, [role="button"]):is([data-testid$="-follow"], [data-testid$="-unfollow"]):focus-visible {
+              outline: 2px solid var(--mosaic-accent-line) !important;
+              outline-offset: 3px !important;
             }
 
             [data-testid="primaryColumn"] [data-mosaic-subscribe-button="true"] {
@@ -1479,6 +1513,10 @@ struct WebColumnView: NSViewRepresentable {
               :root {
                 --mosaic-accent: rgb(113, 94, 65);
                 --mosaic-accent-ink: rgba(255, 252, 247, 0.96);
+                --mosaic-post-halo-core: rgba(190, 139, 67, 0.28);
+                --mosaic-post-halo: rgba(207, 162, 91, 0.20);
+                --mosaic-post-halo-core-hover: rgba(190, 139, 67, 0.38);
+                --mosaic-post-halo-hover: rgba(207, 162, 91, 0.28);
                 --mosaic-accent-button: rgba(113, 94, 65, 0.92);
                 --mosaic-accent-button-hover: rgba(96, 78, 54, 0.98);
                 --mosaic-accent-soft: rgba(113, 94, 65, 0.12);
@@ -1550,7 +1588,7 @@ struct WebColumnView: NSViewRepresentable {
             }
 
             @media (prefers-reduced-motion: reduce) {
-              [data-testid="primaryColumn"] * { transition-duration: 0.001ms !important; }
+              [data-testid="primaryColumn"] * { transition-duration: 0.001ms !important; transition-delay: 0ms !important; }
             }
           `;
 
@@ -2140,64 +2178,7 @@ struct WebColumnView: NSViewRepresentable {
             }
         }
 
-        static let unreadCountScript = """
-        (function() {
-          if (window.__xflowUnreadCountInstalled) return;
-          window.__xflowUnreadCountInstalled = true;
-          const path = window.location.pathname || '';
-          const isNotificationsRoute = /\\/notifications/.test(path);
-          const isMessagesRoute = /\\/messages/.test(path);
-          if (!isNotificationsRoute && !isMessagesRoute) return;
-
-          function parseUnreadCount() {
-            const title = document.title || '';
-            const match = title.match(/^\\((\\d+)\\)/);
-            if (!match) return 0;
-            const parsed = Number(match[1]);
-            return Number.isFinite(parsed) ? parsed : 0;
-          }
-
-          function detectActivity() {
-            if (isMessagesRoute) {
-              return 'new direct message';
-            }
-            const firstNotification = document.querySelector('[data-testid="notification"], [data-testid="cellInnerDiv"]');
-            const text = ((firstNotification && firstNotification.innerText) || '').toLowerCase();
-            if (!text) return 'new activity';
-            if (text.includes('followed you')) return 'new follower';
-            if (text.includes('replied')) return 'new reply';
-            if (text.includes('mentioned')) return 'new mention';
-            if (text.includes('sent you a message') || text.includes('message')) return 'new direct message';
-            if (text.includes('liked')) return 'new like';
-            if (text.includes('reposted')) return 'new repost';
-            if (text.includes('quoted')) return 'new quote';
-            return 'new activity';
-          }
-
-          function send(count, activity) {
-            try {
-              if (!window.webkit || !window.webkit.messageHandlers || !window.webkit.messageHandlers.xflowUnreadCount) return;
-              window.webkit.messageHandlers.xflowUnreadCount.postMessage({ count: count, activity: activity || '' });
-            } catch (_) {}
-          }
-
-          let state = { lastCount: parseUnreadCount(), warmupDone: false };
-
-          function checkCount() {
-            const currentCount = parseUnreadCount();
-            const currentActivity = detectActivity();
-            if (state.warmupDone && currentCount > state.lastCount) {
-              send(currentCount, currentActivity);
-            }
-            state.lastCount = currentCount;
-            state.warmupDone = true;
-          }
-
-          checkCount();
-          setInterval(checkCount, 3500);
-          document.addEventListener('visibilitychange', checkCount);
-        })();
-        """
+        static let unreadCountScript = NotificationActivityScript.source
 
         var currentURL: URL?
         var refreshKey: String = ""
@@ -2206,9 +2187,14 @@ struct WebColumnView: NSViewRepresentable {
         var onNavigation: ((URL?) -> Void)?
         var onDetectedHandle: ((String) -> Void)?
         var onDetectedProfileImage: ((URL?) -> Void)?
+        var onLaunchSessionResolved: ((Bool) -> Void)?
+        private var launchSessionFinished = false
+        private var loginPageBeganAt: TimeInterval?
+        var onInitialContentReady: (() -> Void)?
+        private var hasReportedInitialContent = false
         var onPageTitle: ((String?) -> Void)?
         var onMediaRequest: ((MediaRequest) -> Void)?
-        var onUnreadNotificationCountChanged: ((Int, String?) -> Void)?
+        var onUnreadNotificationCountChanged: ((Int, NotificationActivity?) -> Void)?
         weak var deckWebView: DeckWKWebView?
         var columnAppearanceMode: ColumnAppearanceMode
         var appliedColumnAppearanceMode: ColumnAppearanceMode?
@@ -2224,7 +2210,7 @@ struct WebColumnView: NSViewRepresentable {
             onDetectedProfileImage: ((URL?) -> Void)?,
             onPageTitle: ((String?) -> Void)?,
             onMediaRequest: ((MediaRequest) -> Void)?,
-            onUnreadNotificationCountChanged: ((Int, String?) -> Void)?,
+            onUnreadNotificationCountChanged: ((Int, NotificationActivity?) -> Void)?,
             columnAppearanceMode: ColumnAppearanceMode,
             enableHandleDetection: Bool,
             enableAccountTextHandleDetection: Bool,
@@ -2260,6 +2246,92 @@ struct WebColumnView: NSViewRepresentable {
             }
             if enableHandleDetection {
                 detectProfileMeta(in: webView)
+            }
+            checkInitialContent(in: webView)
+            checkLaunchSession(in: webView)
+        }
+
+        static let launchSessionStateScript = """
+        (() => {
+          if (document.readyState !== 'complete') return 'waiting';
+          const login = document.querySelector('input[autocomplete="username"], input[autocomplete="current-password"], [data-testid="LoginForm_Login_Button"]');
+          if (login) return 'login';
+          const account = document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]');
+          const primary = document.querySelector('[data-testid="primaryColumn"]');
+          if (account && primary && !document.querySelector('[role="dialog"]')) return 'authenticated';
+          return 'waiting';
+        })()
+        """
+
+        private func checkLaunchSession(in webView: WKWebView) {
+            guard !launchSessionFinished, onLaunchSessionResolved != nil else { return }
+            webView.evaluateJavaScript(Self.launchSessionStateScript) { [weak self, weak webView] value, _ in
+                guard let self, let webView, !self.launchSessionFinished,
+                      self.onLaunchSessionResolved != nil, let accountID = self.accountID else { return }
+                let state = webView.isLoading ? "waiting" : (value as? String ?? "waiting")
+                if state == "login" {
+                    if self.loginPageBeganAt == nil { self.loginPageBeganAt = ProcessInfo.processInfo.systemUptime }
+                } else {
+                    self.loginPageBeganAt = nil
+                }
+                if state == "authenticated" {
+                    WebSessionPool.shared.appearsAuthenticated(accountID: accountID) { [weak self, weak webView] authenticated in
+                        guard let self, let webView, !self.launchSessionFinished else { return }
+                        if authenticated && !webView.isLoading {
+                            self.launchSessionFinished = true
+                            self.onLaunchSessionResolved?(true)
+                        } else {
+                            self.scheduleLaunchSessionCheck(in: webView)
+                        }
+                    }
+                } else if let beganAt = self.loginPageBeganAt,
+                          ProcessInfo.processInfo.systemUptime - beganAt >= 2 {
+                    // A stable credential form needs the user. Transient SSO/login
+                    // screens get two seconds to redirect before making that decision.
+                    self.launchSessionFinished = true
+                    self.onLaunchSessionResolved?(false)
+                } else {
+                    self.scheduleLaunchSessionCheck(in: webView)
+                }
+            }
+        }
+
+        private func scheduleLaunchSessionCheck(in webView: WKWebView) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self, weak webView] in
+                if let webView { self?.checkLaunchSession(in: webView) }
+            }
+        }
+
+        static let initialContentReadyScript = """
+        (() => {
+          const primary = document.querySelector('[data-testid="primaryColumn"]');
+          if (document.readyState !== 'complete' || !primary) return false;
+          const content = primary.querySelector('article, [data-testid="notification"], [data-testid="cellInnerDiv"], [data-testid="emptyState"], [data-testid="UserProfileHeader_Items"], [role="alert"]');
+          if (!content) return false;
+          const images = Array.from(primary.querySelectorAll('img')).filter(image => {
+            const rect = image.getBoundingClientRect();
+            return rect.bottom > 0 && rect.top < innerHeight;
+          });
+          return images.every(image => image.complete);
+        })()
+        """
+
+        private func checkInitialContent(in webView: WKWebView) {
+            guard !hasReportedInitialContent, onInitialContentReady != nil else { return }
+            webView.evaluateJavaScript(Self.initialContentReadyScript) { [weak self, weak webView] result, _ in
+                guard let self, let webView, self.onInitialContentReady != nil else { return }
+                if result as? Bool == true, !webView.isLoading {
+                    // Allow the ready DOM and its theme a rendering turn before revealing.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self, weak webView] in
+                        guard let self, let webView, !webView.isLoading else { return }
+                        self.hasReportedInitialContent = true
+                        self.onInitialContentReady?()
+                    }
+                } else {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self, weak webView] in
+                        if let webView { self?.checkInitialContent(in: webView) }
+                    }
+                }
             }
         }
 
@@ -2464,21 +2536,14 @@ struct WebColumnView: NSViewRepresentable {
                       (0...100_000).contains(count) else {
                     return
                 }
-                let activity = (payload["activity"] as? String)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                    .lowercased()
-                let allowedActivities: Set<String> = [
-                    "new activity",
-                    "new direct message",
-                    "new follower",
-                    "new like",
-                    "new mention",
-                    "new quote",
-                    "new reply",
-                    "new repost"
-                ]
-                let safeActivity = activity.flatMap { allowedActivities.contains($0) ? $0 : nil }
-                onUnreadNotificationCountChanged?(count, safeActivity)
+                if payload["baseline"] as? Bool == true {
+                    if let accountID {
+                        XFlowNotificationCenter.shared.observeUnreadBaseline(count: count, accountID: accountID)
+                    }
+                    return
+                }
+                let activity = (payload["activity"] as? [String: Any]).flatMap(NotificationActivity.init(payload:))
+                onUnreadNotificationCountChanged?(count, activity)
             }
         }
 

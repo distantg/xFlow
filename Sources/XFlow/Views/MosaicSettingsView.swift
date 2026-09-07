@@ -13,9 +13,6 @@ struct MosaicSettingsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Appearance")
                         .font(.system(size: 22, weight: .bold, design: .rounded))
-                    Text("Tune the native workspace and how X sits inside each tile.")
-                        .font(.callout)
-                        .foregroundStyle(MosaicTheme.secondaryText(for: colorScheme))
                 }
 
                 MosaicSettingsGroup {
@@ -47,19 +44,21 @@ struct MosaicSettingsView: View {
                                 store.setColumnAppearanceMode(mode)
                             } label: {
                                 HStack(spacing: 12) {
-                                    ZStack {
-                                        Circle()
-                                            .fill(
-                                                store.columnAppearanceMode == mode
-                                                    ? MosaicTheme.accent.opacity(colorScheme == .dark ? 0.2 : 0.24)
-                                                    : Color.white.opacity(colorScheme == .dark ? 0.07 : 0.14)
-                                            )
+                                    if mode != .originalX {
+                                        ZStack {
+                                            Circle()
+                                                .fill(
+                                                    store.columnAppearanceMode == mode
+                                                        ? MosaicTheme.accent.opacity(colorScheme == .dark ? 0.2 : 0.24)
+                                                        : Color.white.opacity(colorScheme == .dark ? 0.07 : 0.14)
+                                                )
 
-                                        Image(systemName: mode.symbolName)
-                                            .symbolRenderingMode(.monochrome)
-                                            .font(.system(size: 13, weight: .semibold))
+                                            Image(systemName: mode.symbolName)
+                                                .symbolRenderingMode(.monochrome)
+                                                .font(.system(size: 13, weight: .semibold))
+                                        }
+                                        .frame(width: 32, height: 32)
                                     }
-                                    .frame(width: 32, height: 32)
 
                                     VStack(alignment: .leading, spacing: 3) {
                                         Text(mode.title)

@@ -78,3 +78,11 @@ Expected behavior:
 
 - If app is closed: macOS launches xFlow and selecting the notification switches to that account.
 - If app is open: selecting the notification switches to that account and focuses notifications.
+
+## Rich notification previews
+
+While a Notifications column is loaded, Mosaic watches unread-count changes and newly loaded X notification rows. Alerts retain the row's actor/action wording and post text, with the receiving account underneath. Clicking an alert opens its post in that account when X supplies a valid post link; otherwise it opens Notifications. Delivery alone does not switch accounts.
+
+Startup and route re-entry establish a baseline rather than replaying old unread items. If X has not loaded a fresh row after seven seconds, Mosaic shows an unread-count fallback instead of attributing an old row to a new event. Previews depend on X's page markup and loaded content; this does not add a background X API feed or a direct-message reader.
+
+Remote pushes already accept `title` and `body`; they also accept `subtitle` (for example, the receiving handle), and group by account in Notification Center. The relay must receive the actual event text from an upstream source. Rich local previews do not remove the signing/backend requirements for quit-state delivery above. macOS notification preview settings control lock-screen visibility.

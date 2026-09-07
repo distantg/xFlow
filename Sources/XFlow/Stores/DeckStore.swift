@@ -39,6 +39,7 @@ final class DeckStore: ObservableObject {
     @Published var presentedLoginAccountID: UUID?
     @Published var quickPanelDestination: QuickPanelDestination?
     @Published var scrollTargetColumnID: UUID?
+    @Published private(set) var notificationNavigationURLs: [UUID: URL] = [:]
 
     @Published var refreshSignal = UUID()
     @Published private(set) var layoutResetSignal = UUID()
@@ -113,10 +114,8 @@ final class DeckStore: ObservableObject {
         defaults.set(activeAccountID.uuidString, forKey: activeAccountStorageKey)
         defaults.set(appearanceMode.rawValue, forKey: appearanceModeStorageKey)
 
-        refreshAuthenticationState(for: activeAccountID, shouldPromptIfNeeded: true)
-        for account in accounts where !account.requiresLogin {
-            refreshProfileMetadataIfNeeded(for: account.id, force: true)
-        }
+        // MainDeckView restores the active web session behind the launch splash
+        // before loading columns or deciding whether a sign-in sheet is needed.
     }
 
     var activeAccount: DeckAccount? {
@@ -273,6 +272,15 @@ final class DeckStore: ObservableObject {
 
         refreshAllColumns()
         refreshProfileMetadataIfNeeded(for: accountID, force: true)
+    }
+
+    func completeLaunchSessionRestoration(accountID: UUID, authenticated: Bool) {
+        guard activeAccountID == accountID else { return }
+        updateAccount(accountID) { $0.requiresLogin = !authenticated }
+        presentedLoginAccountID = authenticated ? nil : accountID
+        if authenticated {
+            refreshProfileMetadataIfNeeded(for: accountID, force: true)
+        }
     }
 
     func refreshAuthenticationState(
@@ -464,8 +472,10 @@ final class DeckStore: ObservableObject {
         refreshSignal = UUID()
     }
 
-    func focusOrAddNotificationsColumnFromSystemEvent() {
+    func focusOrAddNotificationsColumnFromSystemEvent(targetURL: URL? = nil) {
         focusOrAddColumn(type: .notifications, defaultWidth: 360)
+        guard let column = columns.first(where: { $0.type == .notifications }) else { return }
+        notificationNavigationURLs[column.id] = targetURL
     }
 
     func clearColumns() {
