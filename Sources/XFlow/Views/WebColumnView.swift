@@ -2590,8 +2590,10 @@ struct WebColumnView: NSViewRepresentable {
         private var postRecoveryWork: DispatchWorkItem?
         private var postRecoveryURL: URL?
         private var hasRetriedPost = false
+        private var needsInitialHomePostLoad = false
 
         func observePostNavigation(in webView: WKWebView) {
+            needsInitialHomePostLoad = currentURL?.path == "/home"
             postURLObservation = webView.observe(\.url, options: [.new]) { [weak self] webView, _ in
                 guard let self else { return }
                 let target = webView.url
@@ -2602,6 +2604,21 @@ struct WebColumnView: NSViewRepresentable {
                 self.hasRetriedPost = false
                 guard let target, TrustedURLPolicy.isTrustedXPage(target),
                       target.path.range(of: "^/[^/]+/status/[0-9]+/?$", options: .regularExpression) != nil else { return }
+                if self.needsInitialHomePostLoad {
+                    self.needsInitialHomePostLoad = false
+                    self.restorationState = nil
+                    // The first SPA transition can race X's launch hydration.
+                    // Load the selected route as a document, replacing the SPA
+                    // entry so Back still returns directly to the Home timeline.
+                    DispatchQueue.main.async { [weak webView] in
+                        guard let webView, webView.url == target else { return }
+                        let destination = JavaScriptEncoding.stringLiteral(target.absoluteString)
+                        webView.evaluateJavaScript("window.location.replace(\(destination));") { [weak webView] _, error in
+                            guard error != nil, let webView, webView.url == target else { return }
+                            webView.reload()
+                        }
+                    }
+                }
                 let work = DispatchWorkItem { [weak self, weak webView] in
                     guard let self, let webView, webView.url == target,
                           !webView.isLoading, !self.hasRetriedPost else { return }
@@ -3207,7 +3224,7 @@ struct WebColumnView: NSViewRepresentable {
                 let attempts = 0;
                 function tick() {
                   const result = collect();
-                  if ((result.handle && result.handle.length > 0) || (result.avatar && result.avatar.length > 0) || attempts >= 18) {
+                  if (((result.handle && result.handle.length > 0) && (result.avatar && result.avatar.length > 0)) || attempts >= 18) {
                     resolve(JSON.stringify(result));
                     return;
                   }

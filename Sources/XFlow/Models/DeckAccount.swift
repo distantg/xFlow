@@ -111,15 +111,42 @@ final class WebSessionPool {
 
     private final class AvatarCookieObserver: NSObject, WKHTTPCookieStoreObserver {
         let accountID: UUID
+        private var hasSeenAuthenticatedSession = false
+        private var generation = 0
+        private var logoutCheck: DispatchWorkItem?
         init(accountID: UUID) { self.accountID = accountID }
         func cookiesDidChange(in cookieStore: WKHTTPCookieStore) {
+            generation += 1
+            let expectedGeneration = generation
+            logoutCheck?.cancel()
             cookieStore.getAllCookies { [weak self] cookies in
                 let authenticated = cookies.contains {
                     $0.name.lowercased() == "auth_token" && WebSessionPool.isCookieApplicableToXHome($0)
                 }
                 Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    AccountAvatarSession.shared.setAuthenticated(authenticated, accountID: self.accountID)
+                    guard let self, self.generation == expectedGeneration else { return }
+                    if authenticated {
+                        self.hasSeenAuthenticatedSession = true
+                        AccountAvatarSession.shared.setAuthenticated(true, accountID: self.accountID)
+                    } else if self.hasSeenAuthenticatedSession {
+                        // Cookie restoration/rotation may briefly report no token.
+                        // Confirm removal rather than purging a persisted avatar on launch.
+                        let check = DispatchWorkItem { [weak self, weak cookieStore] in
+                            guard let self, let cookieStore else { return }
+                            cookieStore.getAllCookies { [weak self] cookies in
+                                let stillAuthenticated = cookies.contains {
+                                    $0.name.lowercased() == "auth_token" && WebSessionPool.isCookieApplicableToXHome($0)
+                                }
+                                Task { @MainActor [weak self] in
+                                    guard let self, self.generation == expectedGeneration,
+                                          !stillAuthenticated else { return }
+                                    AccountAvatarSession.shared.setAuthenticated(false, accountID: self.accountID)
+                                }
+                            }
+                        }
+                        self.logoutCheck = check
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: check)
+                    }
                 }
             }
         }
@@ -596,7 +623,7 @@ final class WebSessionPool {
             let attempts = 0;
             function tick() {
               const result = collect();
-              if ((result.handle && result.handle.length > 0) || (result.avatar && result.avatar.length > 0) || attempts >= 25) {
+              if (((result.handle && result.handle.length > 0) && (result.avatar && result.avatar.length > 0)) || attempts >= 25) {
                 resolve(JSON.stringify(result));
                 return;
               }

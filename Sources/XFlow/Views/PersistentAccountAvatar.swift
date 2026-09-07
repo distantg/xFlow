@@ -78,35 +78,64 @@ struct PersistentAccountAvatar<Placeholder: View>: View {
         }
         .onChange(of: session.revision) { _ in
             if session.signedOut.contains(accountID.uuidString) { image = nil }
+            else if image == nil { image = AccountAvatarStorage.shared.image(for: accountID) }
         }
         .task(id: "\(url?.absoluteString ?? "")-\(session.revision)") {
             let revision = session.revision
             guard !session.signedOut.contains(accountID.uuidString), let url, TrustedURLPolicy.isTrustedProfileImageURL(url) else { return }
             do {
-                let (bytes, response) = try await URLSession.shared.bytes(from: url)
-                guard let response = response as? HTTPURLResponse,
-                      (200..<300).contains(response.statusCode),
-                      response.expectedContentLength <= 2_000_000 else { return }
-                var data = Data()
-                for try await byte in bytes {
-                    guard data.count < 2_000_000 else { return }
-                    data.append(byte)
-                }
+                guard let png = try await AccountAvatarDownload.load(from: url),
+                      let refreshedImage = NSImage(data: png) else { return }
                 try Task.checkCancellation()
-                guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-                      let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, [
-                        kCGImageSourceCreateThumbnailFromImageAlways: true,
-                        kCGImageSourceThumbnailMaxPixelSize: 128,
-                        kCGImageSourceCreateThumbnailWithTransform: true
-                      ] as CFDictionary),
-                      let png = NSBitmapImageRep(cgImage: thumbnail).representation(using: .png, properties: [:]) else { return }
                 guard session.revision == revision,
                       !session.signedOut.contains(accountID.uuidString) else { return }
                 try AccountAvatarStorage.shared.save(png, for: accountID)
-                image = NSImage(cgImage: thumbnail, size: .zero)
+                image = refreshedImage
             } catch {
                 // Keep the last successful avatar during offline or failed refreshes.
             }
         }
+    }
+}
+
+private enum AccountAvatarDownload {
+    static func load(from url: URL) async throws -> Data? {
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        if url.host?.lowercased() == "pbs.twimg.com", url.path.hasPrefix("/profile_images/") {
+            components?.path = url.path.replacingOccurrences(
+                of: "_(normal|bigger|mini)(?=\\.)", with: "_400x400", options: .regularExpression
+            )
+        } else if url.path.hasSuffix("/profile_image") {
+            var items = components?.queryItems ?? []
+            items.removeAll { $0.name == "size" }
+            items.append(URLQueryItem(name: "size", value: "original"))
+            components?.queryItems = items
+        }
+        if let largerURL = components?.url, largerURL != url {
+            if let image = try? await thumbnail(from: largerURL) { return image }
+            try Task.checkCancellation()
+        }
+        return try await thumbnail(from: url)
+    }
+
+    // Runs away from the main actor, including byte iteration and image decoding.
+    static func thumbnail(from url: URL) async throws -> Data? {
+        let (bytes, response) = try await URLSession.shared.bytes(from: url)
+        guard let response = response as? HTTPURLResponse,
+              (200..<300).contains(response.statusCode),
+              response.expectedContentLength <= 2_000_000 else { return nil }
+        var data = Data()
+        for try await byte in bytes {
+            guard data.count < 2_000_000 else { return nil }
+            data.append(byte)
+        }
+        try Task.checkCancellation()
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceThumbnailMaxPixelSize: 400,
+                kCGImageSourceCreateThumbnailWithTransform: true
+              ] as CFDictionary) else { return nil }
+        return NSBitmapImageRep(cgImage: thumbnail).representation(using: .png, properties: [:])
     }
 }

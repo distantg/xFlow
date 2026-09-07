@@ -277,6 +277,7 @@ final class DeckStore: ObservableObject {
 
     func completeLaunchSessionRestoration(accountID: UUID, authenticated: Bool) {
         guard activeAccountID == accountID else { return }
+        AccountAvatarSession.shared.setAuthenticated(authenticated, accountID: accountID)
         updateAccount(accountID) { $0.requiresLogin = !authenticated }
         presentedLoginAccountID = authenticated ? nil : accountID
         if authenticated {

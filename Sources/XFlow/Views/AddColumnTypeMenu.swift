@@ -49,7 +49,7 @@ private struct AddColumnTypePalette: View {
                     .font(.system(size: 17, weight: .bold, design: .rounded))
                     .foregroundStyle(MosaicTheme.primaryText(for: colorScheme))
 
-                Text("Choose what belongs in your workspace.")
+                Text("Choose what belongs in your Mosaic.")
                     .font(.caption)
                     .foregroundStyle(MosaicTheme.secondaryText(for: colorScheme))
             }
