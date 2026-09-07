@@ -101,7 +101,7 @@ struct MainDeckView: View {
             opaque: false
         )
         .overlay {
-            if isLaunchSplashVisible && !hasRestoredLaunchSession {
+            if !hasRestoredLaunchSession {
                 WebColumnView(
                     url: URL(string: "https://x.com/home")!,
                     refreshKey: "launch-session",
@@ -125,16 +125,15 @@ struct MainDeckView: View {
         }
         .task(id: hasPresentedLaunchSplash) {
             guard hasPresentedLaunchSplash else { return }
-            // Only reveal after visible content has rendered. If X never resolves
-            // its hidden session probe, continue with the persisted deck instead
-            // of leaving Mosaic parked on the splash indefinitely.
+            // Load columns and validate the session concurrently. Network
+            // latency must not keep the native window hidden indefinitely.
             do {
-                try await Task.sleep(nanoseconds: 2_000_000_000)
+                try await Task.sleep(nanoseconds: 350_000_000)
                 var checks = 0
                 while isLaunchSplashVisible && !isLaunchContentReady {
                     try await Task.sleep(nanoseconds: 100_000_000)
                     checks += 1
-                    if checks >= 130 {
+                    if checks >= 16 {
                         allowsLaunchContinue = true
                         dismissLaunchSplash()
                         return
@@ -151,14 +150,14 @@ struct MainDeckView: View {
                 onContinue: dismissLaunchSplash,
                 onSplashPresented: { hasPresentedLaunchSplash = true },
                 onSplashDismissed: {
-                    // Session restoration has already finished behind the splash.
+                    // Remaining columns and session checks may finish in place.
                     hasFinishedLaunchPresentation = true
                 }
             )
                 .frame(width: 0, height: 0)
         }
         .overlay {
-            if hasFinishedLaunchPresentation, let activeAccount = store.activeAccount {
+            if hasFinishedLaunchPresentation && hasRestoredLaunchSession, let activeAccount = store.activeAccount {
                 composerOverlay(account: activeAccount)
                     .zIndex(45)
                     .allowsHitTesting(store.isComposerSheetPresented && !isComposerDismissalPending)
@@ -252,16 +251,14 @@ struct MainDeckView: View {
     }
 
     private var isLaunchContentReady: Bool {
-        guard hasRestoredLaunchSession else { return false }
         if store.columns.isEmpty || store.activeAccount?.requiresLogin == true { return true }
-        let expected = liveColumnIDs.isEmpty
+        let visible = liveColumnIDs.isEmpty
             ? Set(store.columns.prefix(3).map(\.id)) : liveColumnIDs
-        return expected.isSubset(of: launchReadyColumns)
+        return !visible.isDisjoint(with: launchReadyColumns)
     }
 
     private func dismissLaunchSplash() {
-        // An explicit slow-load escape may bypass restoration; normal launch cannot.
-        if allowsLaunchContinue { hasRestoredLaunchSession = true }
+        // Revealing the window does not cancel the independent session check.
         withAnimation(.easeInOut(duration: reduceMotion ? 0.15 : 0.5)) {
             isLaunchSplashVisible = false
         }
@@ -320,9 +317,7 @@ struct MainDeckView: View {
 
     @ViewBuilder
     private func contentBody(columnHeight: CGFloat, viewportSize: CGSize) -> some View {
-        if !hasRestoredLaunchSession {
-            Color.clear
-        } else if activeAccountNeedsLogin {
+        if activeAccountNeedsLogin {
             AccountLockedDeckView(
                 accountName: store.activeAccount?.name ?? "Account",
                 onOpenLogin: {
