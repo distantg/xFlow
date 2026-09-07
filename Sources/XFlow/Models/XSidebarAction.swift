@@ -88,7 +88,10 @@ enum XSidebarAction: String, CaseIterable, Identifiable {
         case .bookmarks:
             return URL(string: "https://x.com/i/bookmarks")
         case .creatorStudio:
-            return URL(string: "https://x.com/i/lists")
+            guard let handle, TrustedURLPolicy.isValidXHandle(handle) else {
+                return nil
+            }
+            return URL(string: "https://x.com/\(handle)/lists")
         case .articles:
             return URL(string: "https://help.x.com/en/using-x/articles")
         case .profile:

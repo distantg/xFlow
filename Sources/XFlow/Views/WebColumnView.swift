@@ -14,6 +14,11 @@ final class DeckWKWebView: WKWebView {
     }
     private var isForwardingHorizontalSequence = false
     private var gestureAxisLock: GestureAxisLock = .undecided
+    private weak var columnMenuClipView: NSClipView?
+    private var columnMenuBoundsObserver: NSObjectProtocol?
+    private var columnMenuKeyMonitor: Any?
+    private var lastColumnMenuScrollY: CGFloat = 0
+    private var columnMenuObservationReadyAt = ProcessInfo.processInfo.systemUptime + 0.24
 
     private enum GestureAxisLock {
         case undecided
@@ -21,7 +26,96 @@ final class DeckWKWebView: WKWebView {
         case vertical
     }
 
+    deinit {
+        if let columnMenuBoundsObserver {
+            NotificationCenter.default.removeObserver(columnMenuBoundsObserver)
+        }
+        if let columnMenuKeyMonitor {
+            NSEvent.removeMonitor(columnMenuKeyMonitor)
+        }
+    }
+
+    func installColumnMenuScrollObservation() {
+        guard let nativeScrollView = subviews.compactMap({ $0 as? NSScrollView }).first else { return }
+        let clipView = nativeScrollView.contentView
+        guard columnMenuClipView !== clipView else { return }
+
+        if let columnMenuBoundsObserver {
+            NotificationCenter.default.removeObserver(columnMenuBoundsObserver)
+        }
+        columnMenuClipView = clipView
+        lastColumnMenuScrollY = clipView.bounds.minY
+        clipView.postsBoundsChangedNotifications = true
+        columnMenuBoundsObserver = NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification,
+            object: clipView,
+            queue: .main
+        ) { [weak self] _ in
+            self?.columnMenuBoundsDidChange()
+        }
+        if columnMenuKeyMonitor == nil {
+            columnMenuKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                self?.handleColumnMenuKey(event)
+                return event
+            }
+        }
+    }
+
+    func resetColumnMenuScrollState(restoringPosition: Bool) {
+        installColumnMenuScrollObservation()
+        if let columnMenuClipView {
+            lastColumnMenuScrollY = columnMenuClipView.bounds.minY
+        }
+        columnMenuObservationReadyAt = ProcessInfo.processInfo.systemUptime + (restoringPosition ? 3.4 : 0.24)
+        evaluateJavaScript("globalThis.__mosaicSetColumnMenuVisible && globalThis.__mosaicSetColumnMenuVisible(true);")
+    }
+
+    private func columnMenuBoundsDidChange() {
+        guard let columnMenuClipView else { return }
+        let scrollY = columnMenuClipView.bounds.minY
+        let delta = scrollY - lastColumnMenuScrollY
+        lastColumnMenuScrollY = scrollY
+        guard abs(delta) >= 0.5,
+              ProcessInfo.processInfo.systemUptime >= columnMenuObservationReadyAt else { return }
+
+        let shouldShow = scrollY <= 2 || delta < 0
+        setColumnMenuVisible(shouldShow)
+    }
+
+    private func handleColumnMenuKey(_ event: NSEvent) {
+        guard let window else { return }
+        let focusedView = window.firstResponder as? NSView
+        let focusIsInsideColumn = focusedView === self || focusedView?.isDescendant(of: self) == true
+        let mousePoint = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        guard focusIsInsideColumn || bounds.contains(mousePoint) else { return }
+
+        switch event.keyCode {
+        case 116, 115: // Page Up, Home
+            setColumnMenuVisible(true)
+        case 121, 119: // Page Down, End
+            setColumnMenuVisible(false)
+        default:
+            break
+        }
+    }
+
+    private func setColumnMenuVisible(_ visible: Bool) {
+        let javaScriptValue = visible ? "true" : "false"
+        evaluateJavaScript(
+            "globalThis.__mosaicSetColumnMenuVisible && globalThis.__mosaicSetColumnMenuVisible(\(javaScriptValue));"
+        )
+    }
+
     override func scrollWheel(with event: NSEvent) {
+        let verticalScroll = abs(event.scrollingDeltaY) > max(0.35, abs(event.scrollingDeltaX))
+        if verticalScroll {
+            // A direct trackpad or mouse-wheel gesture should never be swallowed by
+            // the short restoration grace period used when a column initializes.
+            columnMenuObservationReadyAt = 0
+            if !capturesHorizontalScrollInTopTabRail {
+                setColumnMenuVisible(event.scrollingDeltaY > 0)
+            }
+        }
         if routeHorizontalScrollToParent && !capturesHorizontalScrollInTopTabRail {
             let horizontal = abs(event.scrollingDeltaX)
             let vertical = abs(event.scrollingDeltaY)
@@ -303,6 +397,7 @@ struct WebColumnView: NSViewRepresentable {
         webView.layer?.isOpaque = false
         webView.allowsBackForwardNavigationGestures = false
         webView.routeHorizontalScrollToParent = routeHorizontalScrollToParent
+        webView.installColumnMenuScrollObservation()
         if let nativeScrollView = webView.subviews.compactMap({ $0 as? NSScrollView }).first {
             nativeScrollView.drawsBackground = false
             nativeScrollView.backgroundColor = .clear
@@ -884,15 +979,45 @@ struct WebColumnView: NSViewRepresentable {
               box-shadow: inset 0 0 0 1px var(--mosaic-accent-line), 0 0 0 3px var(--mosaic-accent-soft) !important;
             }
 
+            /* X already renders search as one pill containing its icon and input.
+               Do not turn the inner input into a second inset control. */
+            [data-testid="primaryColumn"] form[role="search"] input,
+            [data-testid="primaryColumn"] [role="search"] input,
+            [data-testid="primaryColumn"] input[data-testid="SearchBox_Search_Input"],
+            [data-testid="primaryColumn"] input[data-testid="SearchBox_Search_Input"]:focus,
+            [data-testid="primaryColumn"] input[data-testid="SearchBox_Search_Input"]:focus-visible {
+              border: 0 !important;
+              border-radius: 0 !important;
+              background: transparent !important;
+              box-shadow: none !important;
+              -webkit-backdrop-filter: none !important;
+              backdrop-filter: none !important;
+              outline: none !important;
+            }
+
             [data-testid="primaryColumn"] [data-mosaic-top-tab-shell="true"] {
-              position: relative !important;
               isolation: isolate !important;
               z-index: 30 !important;
+              opacity: 1 !important;
+              transform: translate3d(0, 0, 0) !important;
+              transition:
+                opacity 180ms ease-out,
+                transform 220ms cubic-bezier(0.22, 1, 0.36, 1) !important;
               background-color: transparent !important;
               background-image: none !important;
               box-shadow: none !important;
               -webkit-backdrop-filter: none !important;
               backdrop-filter: none !important;
+            }
+
+            [data-testid="primaryColumn"] [data-mosaic-top-tab-shell="true"][data-mosaic-needs-positioning="true"] {
+              position: relative !important;
+            }
+
+            [data-testid="primaryColumn"] [data-mosaic-top-tab-shell="true"][data-mosaic-column-menu-visible="false"] {
+              opacity: 0 !important;
+              transform: translate3d(0, calc(-100% - 8px), 0) !important;
+              pointer-events: none !important;
             }
 
             /* Keep the optical material on a stable compositing plane beneath
@@ -1503,20 +1628,28 @@ struct WebColumnView: NSViewRepresentable {
             const primaryColumn = tabList.closest('[data-testid="primaryColumn"]');
             if (!primaryColumn || !tabList.getBoundingClientRect) return tabList.parentElement || tabList;
             const tabRect = tabList.getBoundingClientRect();
-            const maximumHeight = Math.max(92, tabRect.height + 34);
+            /* Some column menus include a title or search row above their tabs.
+               Keep those rows on the same material surface instead of stopping
+               at the first tab-sized wrapper and exposing timeline content. */
+            const maximumHeight = Math.max(156, tabRect.height + 92);
             let best = tabList.parentElement || tabList;
             let bestWidth = tabRect.width;
+            let stickyBest = null;
             let candidate = best;
-            for (let level = 0; candidate && candidate !== primaryColumn && level < 5; level += 1) {
+            for (let level = 0; candidate && candidate !== primaryColumn && level < 8; level += 1) {
               const rect = candidate.getBoundingClientRect();
               if (rect.height > maximumHeight) break;
               if (rect.width >= bestWidth - 1) {
                 best = candidate;
                 bestWidth = rect.width;
+                const style = typeof getComputedStyle === 'function' ? getComputedStyle(candidate) : null;
+                if (style && (style.position === 'sticky' || style.position === 'fixed')) {
+                  stickyBest = candidate;
+                }
               }
               candidate = candidate.parentElement;
             }
-            return best;
+            return stickyBest || best;
           }
 
           function markTopTabRails() {
@@ -1530,6 +1663,11 @@ struct WebColumnView: NSViewRepresentable {
               const shell = findTopTabShell(tabList);
               activeShells.add(shell);
               shell.dataset.mosaicTopTabShell = 'true';
+              delete shell.dataset.mosaicNeedsPositioning;
+              const shellStyle = typeof getComputedStyle === 'function' ? getComputedStyle(shell) : null;
+              shell.dataset.mosaicNeedsPositioning = !shellStyle || shellStyle.position === 'static' ? 'true' : 'false';
+              const menuState = globalThis.__mosaicColumnMenuMotion;
+              shell.dataset.mosaicColumnMenuVisible = !menuState || menuState.visible !== false ? 'true' : 'false';
               updateTopTabOverflow(tabList);
             });
             document.querySelectorAll('[data-mosaic-top-tab-rail="true"]').forEach(rail => {
@@ -1542,23 +1680,91 @@ struct WebColumnView: NSViewRepresentable {
               if (activeShells.has(shell)) return;
               delete shell.dataset.mosaicTopTabShell;
               delete shell.dataset.mosaicColumnScrolled;
+              delete shell.dataset.mosaicColumnMenuVisible;
+              delete shell.dataset.mosaicNeedsPositioning;
             });
             updateTopTabScrollState();
           }
 
-          function updateTopTabScrollState() {
-            if (typeof document.querySelectorAll !== 'function') return;
+          function currentColumnScrollOffset(scrollTarget) {
             const scrollingElement = document.scrollingElement || document.documentElement;
-            const scrollOffset = Math.max(
-              Number(window.scrollY) || 0,
-              Number(scrollingElement && scrollingElement.scrollTop) || 0
+            const targetOffset = scrollTarget &&
+              scrollTarget !== document &&
+              scrollTarget !== window
+                ? Number(scrollTarget.scrollTop) || 0
+                : 0;
+            return Math.max(
+              typeof window !== 'undefined' ? Number(window.scrollY) || 0 : 0,
+              Number(scrollingElement && scrollingElement.scrollTop) || 0,
+              targetOffset
             );
+          }
+
+          function columnMenuClock() {
+            if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+              return performance.now();
+            }
+            return Date.now();
+          }
+
+          function columnMenuMotionState() {
+            if (!globalThis.__mosaicColumnMenuMotion) {
+              const initializedAt = columnMenuClock();
+              globalThis.__mosaicColumnMenuMotion = {
+                lastOffset: currentColumnScrollOffset(),
+                visible: true,
+                /* X can restore a saved scroll position in several delayed
+                   layout passes. Keep that restoration from impersonating a
+                   user gesture; wheel and keyboard intent clear this grace
+                   immediately. */
+                settleUntil: initializedAt + 3600
+              };
+            }
+            return globalThis.__mosaicColumnMenuMotion;
+          }
+
+          function setColumnMenuVisible(visible) {
+            const state = columnMenuMotionState();
+            state.visible = Boolean(visible);
+            if (typeof document.querySelectorAll !== 'function') return;
+            document.querySelectorAll('[data-mosaic-top-tab-shell="true"]').forEach(shell => {
+              shell.dataset.mosaicColumnMenuVisible = state.visible ? 'true' : 'false';
+            });
+          }
+
+          globalThis.__mosaicSetColumnMenuVisible = setColumnMenuVisible;
+
+          function noteColumnMenuScrollIntent(deltaY) {
+            if (!Number.isFinite(deltaY) || Math.abs(deltaY) < 0.5) return;
+            const state = columnMenuMotionState();
+            state.settleUntil = 0;
+            if (deltaY < 0) {
+              setColumnMenuVisible(true);
+            } else if (currentColumnScrollOffset() > 2) {
+              setColumnMenuVisible(false);
+            }
+          }
+
+          function updateTopTabScrollState(scrollTarget) {
+            if (typeof document.querySelectorAll !== 'function') return;
+            const scrollOffset = currentColumnScrollOffset(scrollTarget);
             const wasScrolled = globalThis.__mosaicColumnScrolled === true;
             const isScrolled = wasScrolled ? scrollOffset > 2 : scrollOffset > 12;
             globalThis.__mosaicColumnScrolled = isScrolled;
+            const menuState = columnMenuMotionState();
+            const scrollDelta = scrollOffset - menuState.lastOffset;
+            menuState.lastOffset = scrollOffset;
+            if (scrollOffset <= 2) {
+              setColumnMenuVisible(true);
+            } else if (columnMenuClock() <= menuState.settleUntil) {
+              setColumnMenuVisible(true);
+            } else if (Math.abs(scrollDelta) >= 0.5) {
+              setColumnMenuVisible(scrollDelta < 0);
+            }
             const shells = Array.from(document.querySelectorAll('[data-mosaic-top-tab-shell="true"]'));
             shells.forEach(shell => {
               shell.dataset.mosaicColumnScrolled = isScrolled ? 'true' : 'false';
+              shell.dataset.mosaicColumnMenuVisible = menuState.visible ? 'true' : 'false';
             });
           }
 
@@ -1763,7 +1969,10 @@ struct WebColumnView: NSViewRepresentable {
               },
               wheel(event) {
                 const tabList = event.target && event.target.closest && event.target.closest('[data-mosaic-top-tab-rail="true"]');
-                if (!tabList || !updateTopTabOverflow(tabList)) return;
+                if (!tabList || !updateTopTabOverflow(tabList)) {
+                  noteColumnMenuScrollIntent(event.deltaY);
+                  return;
+                }
                 postTopTabCapture(true);
                 const horizontalIntent = Math.abs(event.deltaX) >= Math.abs(event.deltaY);
                 if (horizontalIntent) {
@@ -1779,15 +1988,37 @@ struct WebColumnView: NSViewRepresentable {
                 const deltaScale = event.deltaMode === 1 ? 18 : (event.deltaMode === 2 ? tabList.clientWidth * 0.82 : 1);
                 queueTopTabGlide(tabList, delta * deltaScale);
               },
+              keydown(event) {
+                const target = event.target;
+                const isEditable = target && (
+                  target.isContentEditable ||
+                  target.tagName === 'INPUT' ||
+                  target.tagName === 'TEXTAREA' ||
+                  target.tagName === 'SELECT'
+                );
+                if (isEditable) return;
+
+                const state = columnMenuMotionState();
+                if (event.key === 'PageUp' || event.key === 'Home' || event.key === 'ArrowUp' ||
+                    (event.key === ' ' && event.shiftKey)) {
+                  state.settleUntil = 0;
+                  setColumnMenuVisible(true);
+                } else if (event.key === 'PageDown' || event.key === 'End' || event.key === 'ArrowDown' ||
+                           (event.key === ' ' && !event.shiftKey)) {
+                  state.settleUntil = 0;
+                  setColumnMenuVisible(false);
+                }
+              },
               scroll(event) {
                 const tabList = event.target && event.target.closest && event.target.closest('[data-mosaic-top-tab-rail="true"]');
                 if (tabList) updateTopTabOverflow(tabList);
-                updateTopTabScrollState();
+                updateTopTabScrollState(event.target);
               }
             };
             document.addEventListener('pointerover', handlers.pointerover, true);
             document.addEventListener('pointerout', handlers.pointerout, true);
             document.addEventListener('wheel', handlers.wheel, { capture: true, passive: false });
+            document.addEventListener('keydown', handlers.keydown, true);
             document.addEventListener('scroll', handlers.scroll, true);
             globalThis.__mosaicTopTabHandlers = handlers;
           }
@@ -1800,6 +2031,7 @@ struct WebColumnView: NSViewRepresentable {
           markTransientPostIndicators();
           markSubscribeButtons();
           installTopTabInteraction();
+          setColumnMenuVisible(true);
           if (!globalThis.__mosaicComposerObserver && typeof MutationObserver !== 'undefined' && document.body) {
             globalThis.__mosaicComposerObserver = new MutationObserver(() => {
               if (globalThis.__mosaicRefreshFrame) return;
@@ -1834,11 +2066,14 @@ struct WebColumnView: NSViewRepresentable {
             delete globalThis.__mosaicRefreshFrame;
           }
           delete globalThis.__mosaicColumnScrolled;
+          delete globalThis.__mosaicColumnMenuMotion;
+          delete globalThis.__mosaicSetColumnMenuVisible;
           if (globalThis.__mosaicTopTabHandlers && typeof document.removeEventListener === 'function') {
             const handlers = globalThis.__mosaicTopTabHandlers;
             document.removeEventListener('pointerover', handlers.pointerover, true);
             document.removeEventListener('pointerout', handlers.pointerout, true);
             document.removeEventListener('wheel', handlers.wheel, true);
+            document.removeEventListener('keydown', handlers.keydown, true);
             document.removeEventListener('scroll', handlers.scroll, true);
             delete globalThis.__mosaicTopTabHandlers;
           }
@@ -1866,6 +2101,8 @@ struct WebColumnView: NSViewRepresentable {
             document.querySelectorAll('[data-mosaic-top-tab-shell="true"]').forEach(node => {
               delete node.dataset.mosaicTopTabShell;
               delete node.dataset.mosaicColumnScrolled;
+              delete node.dataset.mosaicColumnMenuVisible;
+              delete node.dataset.mosaicNeedsPositioning;
             });
             document.querySelectorAll('[data-mosaic-volume-button="true"]').forEach(node => {
               delete node.dataset.mosaicVolumeButton;
@@ -2014,6 +2251,7 @@ struct WebColumnView: NSViewRepresentable {
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             onNavigation?(webView.url)
             onPageTitle?(webView.title)
+            deckWebView?.resetColumnMenuScrollState(restoringPosition: restorationState != nil)
             applyFilter(to: webView)
             applyColumnAppearance(to: webView)
             restoreCapturedPosition(in: webView)

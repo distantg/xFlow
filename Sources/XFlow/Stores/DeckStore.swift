@@ -43,6 +43,7 @@ final class DeckStore: ObservableObject {
     @Published var refreshSignal = UUID()
     @Published private(set) var layoutResetSignal = UUID()
     @Published var isAddColumnSheetPresented = false
+    @Published private(set) var addColumnInitialType: DeckColumnType = .home
     @Published var isComposerSheetPresented = false
 
     private let defaults = UserDefaults.standard
@@ -126,7 +127,8 @@ final class DeckStore: ObservableObject {
         accounts.first(where: { $0.id == id })
     }
 
-    func presentAddColumnSheet() {
+    func presentAddColumnSheet(type: DeckColumnType = .home) {
+        addColumnInitialType = type
         isAddColumnSheetPresented = true
     }
 
@@ -381,7 +383,6 @@ final class DeckStore: ObservableObject {
         type: DeckColumnType,
         parameter: String?,
         customTitle: String?,
-        width: Double,
         filter: ColumnFilter
     ) {
         columns.append(
@@ -389,7 +390,6 @@ final class DeckStore: ObservableObject {
                 type: type,
                 parameter: parameter,
                 customTitle: customTitle,
-                width: width,
                 filter: filter
             )
         )
@@ -555,12 +555,20 @@ final class DeckStore: ObservableObject {
     }
 
     private func focusOrAddListsColumn() {
-        if let existing = columns.first(where: { $0.type == .list }) {
-            requestScroll(to: existing.id)
+        if let existingIndex = columns.firstIndex(where: { $0.type == .list }) {
+            let normalizedParameter = columns[existingIndex].parameter?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            if normalizedParameter == nil || normalizedParameter == "i/lists",
+               let handle = activeAccount?.handle {
+                columns[existingIndex].parameter = "\(handle)/lists"
+            }
+            requestScroll(to: columns[existingIndex].id)
             return
         }
 
-        let added = DeckColumn(type: .list, parameter: nil, customTitle: "Lists", width: 360)
+        let parameter = activeAccount?.handle.map { "\($0)/lists" }
+        let added = DeckColumn(type: .list, parameter: parameter, customTitle: "Lists", width: 360)
         columns.append(added)
         requestScroll(to: added.id)
     }
@@ -714,6 +722,11 @@ final class DeckStore: ObservableObject {
                 .replacingOccurrences(of: "-", with: " ")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             return (parameter, (titleHint?.isEmpty == false) ? titleHint : nil)
+        }
+
+        if segments.count == 2,
+           segments[1].lowercased() == "lists" {
+            return ("\(segments[0])/lists", "Lists")
         }
 
         return nil

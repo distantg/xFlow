@@ -83,6 +83,13 @@ final class SecurityPolicyTests: XCTestCase {
             DeckColumnType.list.buildURL(parameter: "file:///etc/passwd").absoluteString,
             "https://x.com/i/lists"
         )
+        XCTAssertTrue(
+            TrustedURLPolicy.isTrustedXListURL(URL(string: "https://x.com/example_user/lists")!)
+        )
+        XCTAssertEqual(
+            DeckColumnType.list.buildURL(parameter: "example_user/lists").absoluteString,
+            "https://x.com/example_user/lists"
+        )
         XCTAssertEqual(
             DeckColumnType.list.buildURL(parameter: "https://evil.example/i/lists/123").absoluteString,
             "https://x.com/i/lists"

@@ -137,6 +137,12 @@ enum TrustedURLPolicy {
             return isValidListIdentifier(segments[2])
         }
 
+        if segments.count == 2,
+           isValidXHandle(segments[0]),
+           segments[1].lowercased() == "lists" {
+            return true
+        }
+
         return segments.count == 2 &&
             segments[0].lowercased() == "i" &&
             segments[1].lowercased() == "lists"

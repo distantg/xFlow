@@ -36,7 +36,7 @@ enum DeckColumnType: String, Codable, CaseIterable, Identifiable {
     var summary: String {
         switch self {
         case .home:
-            return "Main following timeline"
+            return "Your timeline"
         case .notifications:
             return "Mentions and activity"
         case .messages:

@@ -6,6 +6,7 @@ enum MosaicTheme {
         static let control: CGFloat = 10
         static let tile: CGFloat = 18
         static let panel: CGFloat = 22
+        static let pill: CGFloat = 999
     }
 
     enum Spacing {
@@ -591,17 +592,28 @@ struct MosaicPanel<Content: View>: View {
     }
 }
 
-struct MosaicEmptyState: View {
+struct MosaicEmptyState<Action: View>: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let symbol: String
     let title: String
     let detail: String
-    let actionTitle: String
-    let action: () -> Void
+    let action: Action
 
     @State private var didAppear = false
+
+    init(
+        symbol: String,
+        title: String,
+        detail: String,
+        @ViewBuilder action: () -> Action
+    ) {
+        self.symbol = symbol
+        self.title = title
+        self.detail = detail
+        self.action = action()
+    }
 
     var body: some View {
         VStack(spacing: 16) {
@@ -631,9 +643,7 @@ struct MosaicEmptyState: View {
                     .frame(maxWidth: 360)
             }
 
-            Button(actionTitle, action: action)
-                .buttonStyle(MosaicButtonStyle(kind: .prominent))
-                .keyboardShortcut(.defaultAction)
+            action
         }
         .padding(28)
         .background(MosaicSurface(level: .raised, cornerRadius: MosaicTheme.Radius.panel))

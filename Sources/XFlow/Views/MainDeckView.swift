@@ -129,7 +129,7 @@ struct MainDeckView: View {
             )
         }
         .sheet(isPresented: $store.isAddColumnSheetPresented) {
-            AddColumnSheet()
+            AddColumnSheet(initialType: store.addColumnInitialType)
                 .environmentObject(store)
         }
         .sheet(item: quickPanelBinding) { destination in
@@ -232,8 +232,8 @@ struct MainDeckView: View {
                 }
             )
         } else if store.columns.isEmpty {
-            EmptyDeckView {
-                store.presentAddColumnSheet()
+            EmptyDeckView { type in
+                store.presentAddColumnSheet(type: type)
             }
         } else {
             deckScrollView(columnHeight: columnHeight, viewportSize: viewportSize)
@@ -460,8 +460,8 @@ struct MainDeckView: View {
     }
 
     private var addColumnTile: some View {
-        Button {
-            store.presentAddColumnSheet()
+        AddColumnTypeMenu { type in
+            store.presentAddColumnSheet(type: type)
         } label: {
             ZStack {
                 VStack(spacing: 9) {
@@ -477,14 +477,12 @@ struct MainDeckView: View {
                 }
                 .padding(.horizontal, 28)
                 .padding(.vertical, 22)
-                .background(
-                    MosaicSurface(level: .base, cornerRadius: MosaicTheme.Radius.panel)
-                )
             }
             .foregroundStyle(addColumnPrimaryTextColor)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Add Column")
     }
 
     private func composerOverlay(account: DeckAccount) -> some View {
