@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MosaicSettingsView: View {
     @EnvironmentObject private var store: DeckStore
+    @EnvironmentObject private var updateManager: UpdateManager
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -11,7 +12,7 @@ struct MosaicSettingsView: View {
 
             VStack(alignment: .leading, spacing: MosaicTheme.Spacing.panel) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Appearance")
+                    Text("Settings")
                         .font(.system(size: 22, weight: .bold, design: .rounded))
                 }
 
@@ -101,10 +102,29 @@ struct MosaicSettingsView: View {
                         }
                     }
                 }
+                MosaicSettingsGroup {
+                    VStack(alignment: .leading, spacing: 10) {
+                        settingsLabel("Updates", symbol: "arrow.down.circle")
+                        Toggle("Automatically check for updates", isOn: Binding(
+                            get: { updateManager.automaticallyChecksForUpdates },
+                            set: { updateManager.setAutomaticChecks($0) }
+                        ))
+                        Toggle("Download and install updates when Mosaic quits", isOn: Binding(
+                            get: { updateManager.automaticallyDownloadsUpdates },
+                            set: { updateManager.setAutomaticDownloads($0) }
+                        ))
+                        .disabled(!updateManager.automaticallyChecksForUpdates)
+                        Button("Check for Updates…") { updateManager.checkManually() }
+                            .disabled(!updateManager.canCheckForUpdates)
+                        Text("Checks every 12 hours. You can also install and relaunch immediately when an update is ready.")
+                            .font(.caption)
+                            .foregroundStyle(MosaicTheme.secondaryText(for: colorScheme))
+                    }
+                }
             }
             .padding(24)
         }
-        .frame(width: 520, height: 430)
+        .frame(width: 520, height: 640)
     }
 
     private var appearanceBinding: Binding<AppAppearanceMode> {

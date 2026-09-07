@@ -35,7 +35,7 @@ struct MainDeckView: View {
     @State private var isDeckTransitioning = false
     @State private var resetRevealCount: Int?
     @State private var layoutResetAnimationID: UUID?
-    @StateObject private var updateManager = UpdateManager()
+    @EnvironmentObject private var updateManager: UpdateManager
     @State private var columnFrames: [UUID: CGRect] = [:]
     @State private var liveColumnIDs: Set<UUID> = []
     @State private var isComposerContentVisible = false
@@ -80,11 +80,9 @@ struct MainDeckView: View {
                     onColumnAppearanceModeChange: { mode in
                         store.setColumnAppearanceMode(mode)
                     },
-                    isCheckingForUpdates: updateManager.isChecking,
+                    isCheckingForUpdates: !updateManager.canCheckForUpdates,
                     onCheckUpdates: {
-                        Task {
-                            await updateManager.checkManually()
-                        }
+                        updateManager.checkManually()
                     }
                 )
                 .zIndex(100)
@@ -180,24 +178,6 @@ struct MainDeckView: View {
             }
         }
         .animation(MosaicMotion.expressive(reduceMotion: reduceMotion), value: mediaRequest != nil)
-        .alert(item: $updateManager.alert) { updateAlert in
-            if let downloadURL = updateAlert.downloadURL {
-                return Alert(
-                    title: Text(updateAlert.title),
-                    message: Text(updateAlert.message),
-                    primaryButton: .default(Text("Open GitHub Release")) {
-                        updateManager.openDownloadPage(downloadURL)
-                    },
-                    secondaryButton: .cancel(Text("Later"))
-                )
-            }
-
-            return Alert(
-                title: Text(updateAlert.title),
-                message: Text(updateAlert.message),
-                dismissButton: .default(Text("OK"))
-            )
-        }
         .sheet(isPresented: $store.isAddColumnSheetPresented) {
             AddColumnSheet(initialType: store.addColumnInitialType)
                 .environmentObject(store)

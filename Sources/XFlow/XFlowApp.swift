@@ -4,22 +4,29 @@ import SwiftUI
 struct XFlowApp: App {
     @NSApplicationDelegateAdaptor(XFlowAppDelegate.self) private var appDelegate
     @StateObject private var store = DeckStore()
+    @StateObject private var updateManager = UpdateManager()
 
     var body: some Scene {
         Window("Mosaic", id: "main") {
             MainDeckView()
                 .environmentObject(store)
+                .environmentObject(updateManager)
                 .preferredColorScheme(store.appearanceMode.preferredColorScheme)
                 .frame(minWidth: 1200, minHeight: 760)
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
             DeckCommands(store: store)
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { updateManager.checkManually() }
+                    .disabled(!updateManager.canCheckForUpdates)
+            }
         }
 
         Settings {
             MosaicSettingsView()
                 .environmentObject(store)
+                .environmentObject(updateManager)
                 .preferredColorScheme(store.appearanceMode.preferredColorScheme)
         }
     }

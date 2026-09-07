@@ -27,6 +27,19 @@ BASE_ENTITLEMENTS_FILE="$ROOT_DIR/Config/xFlow.entitlements"
 CONTAINER_MIGRATION_FILE="$ROOT_DIR/Resources/container-migration.plist"
 CODESIGN_IDENTITY="${XFLOW_CODESIGN_IDENTITY:-"-"}"
 APS_ENVIRONMENT="${XFLOW_APS_ENVIRONMENT:-development}"
+APP_VERSION="${XFLOW_VERSION:-2.1}"
+APP_BUILD="${XFLOW_BUILD_NUMBER:-171}"
+FEED_URL="${XFLOW_UPDATE_FEED_URL:-https://raw.githubusercontent.com/distantg/xFlow/main/updates/${TARGET_ARCH}/appcast.xml}"
+PUBLIC_KEY="$(cat "$ROOT_DIR/Config/SparklePublicKey.txt")"
+# Test feeds are permitted only in an explicitly isolated bundle.
+if [[ "$FEED_URL" != "https://raw.githubusercontent.com/distantg/xFlow/main/updates/${TARGET_ARCH}/appcast.xml" && "$BUNDLE_ID" == "com.distantg.xflow" ]]; then
+  echo "Custom update feeds require an isolated XFLOW_BUNDLE_ID." >&2
+  exit 2
+fi
+if [[ ! "$APP_VERSION" =~ ^[0-9]+(\.[0-9]+){1,3}$ || ! "$APP_BUILD" =~ ^[0-9]+$ || "$FEED_URL" == *[\<\>\"\&]* ]]; then
+  echo "Invalid version, build, or update feed." >&2
+  exit 2
+fi
 
 if [[ ! "$BUNDLE_ID" =~ ^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$ ]]; then
   echo "XFLOW_BUNDLE_ID must be a valid reverse-DNS bundle identifier." >&2
@@ -97,9 +110,21 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleShortVersionString</key>
-    <string>2.0.2</string>
+    <string>${APP_VERSION}</string>
     <key>CFBundleVersion</key>
-    <string>161</string>
+    <string>${APP_BUILD}</string>
+    <key>SUFeedURL</key>
+    <string>${FEED_URL}</string>
+    <key>SUPublicEDKey</key>
+    <string>${PUBLIC_KEY}</string>
+    <key>SUEnableInstallerLauncherService</key>
+    <true/>
+    <key>SUScheduledCheckInterval</key>
+    <integer>43200</integer>
+    <key>SUAutomaticallyUpdate</key>
+    <false/>
+    <key>SUVerifyUpdateBeforeExtraction</key>
+    <true/>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.social-networking</string>
     <key>LSMinimumSystemVersion</key>
@@ -116,6 +141,11 @@ PLIST
 
 cp "$BIN_PATH" "$APP_DIR/Contents/MacOS/$APP_NAME"
 strip -S "$APP_DIR/Contents/MacOS/$APP_NAME"
+SPARKLE_ROOT="$BUILD_DIR/artifacts/sparkle/Sparkle"
+FRAMEWORK="$APP_DIR/Contents/Frameworks/Sparkle.framework"
+mkdir -p "$APP_DIR/Contents/Frameworks"
+ditto "$SPARKLE_ROOT/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework" "$FRAMEWORK"
+cp "$SPARKLE_ROOT/LICENSE" "$APP_DIR/Contents/Resources/Sparkle-LICENSE.txt"
 chmod +x "$APP_DIR/Contents/MacOS/$APP_NAME"
 printf 'APPL????' > "$APP_DIR/Contents/PkgInfo"
 
@@ -147,18 +177,30 @@ cp "$CONTAINER_MIGRATION_FILE" "$APP_DIR/Contents/Resources/container-migration.
 
 xattr -cr "$APP_DIR" 2>/dev/null || true
 
-ENTITLEMENTS_FILE="$BASE_ENTITLEMENTS_FILE"
+ENTITLEMENTS_FILE="$APP_DIR/../${TARGET_ARCH}-signing.entitlements"
+cp "$BASE_ENTITLEMENTS_FILE" "$ENTITLEMENTS_FILE"
+/usr/libexec/PlistBuddy -c "Add :com.apple.security.temporary-exception.mach-lookup.global-name array" "$ENTITLEMENTS_FILE"
+/usr/libexec/PlistBuddy -c "Add :com.apple.security.temporary-exception.mach-lookup.global-name:0 string ${BUNDLE_ID}-spks" "$ENTITLEMENTS_FILE"
+/usr/libexec/PlistBuddy -c "Add :com.apple.security.temporary-exception.mach-lookup.global-name:1 string ${BUNDLE_ID}-spki" "$ENTITLEMENTS_FILE"
+# Ad-hoc binaries have no Team ID, so hardened library validation cannot match
+# the embedded framework to the host. Developer ID builds retain validation.
+if [[ "$CODESIGN_IDENTITY" == "-" ]]; then
+  /usr/libexec/PlistBuddy -c "Add :com.apple.security.cs.disable-library-validation bool true" "$ENTITLEMENTS_FILE"
+fi
 if [[ "$CODESIGN_IDENTITY" != "-" ]]; then
-  ENTITLEMENTS_FILE="$ROOT_DIR/dist/xFlow.entitlements"
-  cp "$BASE_ENTITLEMENTS_FILE" "$ENTITLEMENTS_FILE"
   /usr/libexec/PlistBuddy \
     -c "Add :com.apple.developer.aps-environment string $APS_ENVIRONMENT" \
     "$ENTITLEMENTS_FILE"
 fi
 
+# Sign inside-out; never apply the host sandbox entitlements to Sparkle helpers.
+for component in XPCServices/Installer.xpc XPCServices/Downloader.xpc Autoupdate Updater.app; do
+  codesign --force --options runtime --preserve-metadata=entitlements --sign "$CODESIGN_IDENTITY" "$FRAMEWORK/Versions/B/$component"
+done
+codesign --force --options runtime --sign "$CODESIGN_IDENTITY" "$FRAMEWORK"
+
 codesign \
   --force \
-  --deep \
   --options runtime \
   --entitlements "$ENTITLEMENTS_FILE" \
   --sign "$CODESIGN_IDENTITY" \

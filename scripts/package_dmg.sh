@@ -68,7 +68,9 @@ Important: the Open Anyway button is only available for about one hour after you
 
 Updating Mosaic:
 
-To update, download the newest DMG, drag Mosaic.app into Applications, and choose Replace when Finder asks. Your accounts, login sessions, column layouts, and preferences are stored separately from the app and should remain intact when replacing Mosaic.app.
+Mosaic 2.1 and later can update themselves. Enable automatic updates in Settings, or choose Check for Updates from the Mosaic menu. Downloaded updates can install when you quit, or you can choose Install and Relaunch.
+
+If upgrading from an older version, download the newest DMG, drag Mosaic.app into Applications, and choose Replace when Finder asks. Your accounts, login sessions, column layouts, and preferences are stored separately from the app and should remain intact when replacing Mosaic.app.
 
 Why this happens:
 
@@ -155,6 +157,8 @@ hdiutil create -srcfolder "$STAGING_DIR" -volname "$VOLUME_NAME" -fs HFS+ -forma
 MOUNT_DIR="$(mktemp -d /tmp/xflow-dmg-mount.XXXXXX)"
 hdiutil attach "$RW_DMG" -readwrite -noverify -noautoopen -mountpoint "$MOUNT_DIR" >/dev/null
 
+# Headless release builds avoid Finder automation and Finder-generated metadata.
+if [[ "${XFLOW_DMG_HEADLESS:-0}" != "1" ]]; then
 osascript >/dev/null <<APPLESCRIPT
 tell application "Finder"
     set dmgFolder to POSIX file "$MOUNT_DIR" as alias
@@ -177,6 +181,7 @@ tell application "Finder"
     delay 1
 end tell
 APPLESCRIPT
+fi
 
 bless --folder "$MOUNT_DIR" --openfolder "$MOUNT_DIR" >/dev/null 2>&1 || true
 

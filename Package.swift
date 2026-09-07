@@ -10,10 +10,15 @@ let package = Package(
     products: [
         .executable(name: "XFlow", targets: ["XFlow"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.2")
+    ],
     targets: [
         .executableTarget(
             name: "XFlow",
-            path: "Sources/XFlow"
+            dependencies: [.product(name: "Sparkle", package: "Sparkle")],
+            path: "Sources/XFlow",
+            linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         ),
         .testTarget(
             name: "XFlowTests",

@@ -52,7 +52,7 @@ Mosaic has a lightweight update checker. The sidebar **Check for updates** butto
 https://raw.githubusercontent.com/distantg/xFlow/main/update-manifest.json
 ```
 
-Manual checks show available updates immediately. Automatic background checks wait 7 days after a release is published before notifying users.
+Mosaic 2.1 and later use Sparkle 2 for signed automatic updates. Enable automatic checks and installation in Settings. Checks run every 12 hours with no release delay; downloaded updates install on quit, or you can choose Install and Relaunch. Older installations need one manual upgrade to this version.
 
 To update Mosaic, download the newest DMG, drag `Mosaic.app` into **Applications**, and choose **Replace** when Finder asks. Your accounts, login sessions, column layouts, and preferences are stored separately from the app bundle and should remain intact when replacing `Mosaic.app`.
 
@@ -114,25 +114,14 @@ dist/Mosaic-Intel.dmg
 
 ## Release Checklist
 
-1. Update `CFBundleShortVersionString` and `CFBundleVersion` in `scripts/package_app.sh`.
-2. Update `update-manifest.json` with the new version, release date, GitHub Release URL, and release notes.
-3. Build both apps:
+See [the automatic update release guide](docs/automatic-updates.md) for signing-key setup, testing, and publishing. Packaging alone does not publish an update.
 
-```bash
-XFLOW_ARCH=arm64 ./scripts/package_app.sh
-XFLOW_ARCH=x86_64 ./scripts/package_app.sh
-```
-
-4. Build each DMG:
-
-```bash
-XFLOW_ARCH=arm64 ./scripts/package_dmg.sh
-XFLOW_ARCH=x86_64 ./scripts/package_dmg.sh
-```
-
-5. Create a GitHub Release, for example `v1.1`.
-6. Upload both DMG files to the release.
-7. Push the updated manifest so in-app update checks can find the release.
+1. Increment the default `APP_VERSION` and `APP_BUILD` in `scripts/package_app.sh` and update `Resources/UpdateReleaseNotes.html`.
+2. Build both architectures with `scripts/package_app.sh` (set `XFLOW_ARCH=arm64` and `XFLOW_ARCH=x86_64`).
+3. Run `scripts/package_updates.sh` to prepare signed ZIP archives and architecture-specific appcasts in `dist/updates/`.
+4. Test an update from the previous release before publishing.
+5. Publish the archives to the matching GitHub release **before** publishing each appcast to `updates/arm64/appcast.xml` and `updates/x86_64/appcast.xml` on `main`.
+6. Keep the DMGs for first-time/manual installations and update `update-manifest.json` only when the release is publicly downloadable, so older clients can find it.
 
 ## Notes
 
