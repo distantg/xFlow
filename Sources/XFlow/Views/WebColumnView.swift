@@ -630,7 +630,6 @@ struct WebColumnView: NSViewRepresentable {
           let hasSeenDialog = false;
           let hasReportedReady = false;
           let hasReportedDismissal = false;
-          let dismissalTimer = 0;
 
           function send(event) {
             try {
@@ -701,10 +700,6 @@ struct WebColumnView: NSViewRepresentable {
             const surface = composerSurface();
             if (surface) {
               const dialog = surface.node;
-              if (dismissalTimer) {
-                clearTimeout(dismissalTimer);
-                dismissalTimer = 0;
-              }
               hasSeenComposer = true;
               if (surface.mode === 'dialog') hasSeenDialog = true;
               document.querySelectorAll('[data-mosaic-compose-dialog="true"]').forEach(function(node) {
@@ -720,14 +715,30 @@ struct WebColumnView: NSViewRepresentable {
               delete node.dataset.mosaicComposeDialog;
               delete node.dataset.mosaicComposeMode;
             });
-            if (!hasSeenComposer || hasReportedDismissal || dismissalTimer) return;
-            dismissalTimer = setTimeout(function() {
-              dismissalTimer = 0;
-              if (composerSurface() || hasReportedDismissal) return;
-              hasReportedDismissal = true;
-              send('dismissed');
-            }, 180);
+            if (!hasSeenComposer || hasReportedDismissal) return;
+            // Start the native blur fade in the same mutation cycle as X
+            // removes the dialog, without a separate dismissal debounce.
+            hasReportedDismissal = true;
+            send('dismissed');
           }
+
+          // Empty composers can close at the click itself. Keep the dialog
+          // painted while SwiftUI animates it and the blur out together.
+          // Nonempty drafts retain X's save/discard confirmation flow.
+          document.addEventListener('click', function(event) {
+            const close = event.target.closest && event.target.closest('[data-testid="app-bar-close"]');
+            if (!close || hasReportedDismissal) return;
+            const surface = composerSurface();
+            if (!surface || !surface.node.contains(close)) return;
+            const text = Array.from(surface.node.querySelectorAll('[contenteditable="true"]'))
+              .some(node => node.textContent.trim().length > 0);
+            const attachments = surface.node.querySelector('[data-testid="attachments"], [data-testid="removeMedia"], [data-testid="pollQuestion"]');
+            if (text || attachments) return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            hasReportedDismissal = true;
+            send('dismissed');
+          }, true);
 
           updatePresentation();
           setTimeout(updatePresentation, 920);

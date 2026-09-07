@@ -40,6 +40,8 @@ struct MainDeckView: View {
     @State private var liveColumnIDs: Set<UUID> = []
     @State private var isComposerContentVisible = false
     @State private var isComposerDismissalPending = false
+    @State private var isComposerReady = false
+    @State private var composerGeneration = 0
 
     private let columnSpacing: CGFloat = 10
     private let columnViewportCoordinateSpace = "mosaic-column-viewport"
@@ -95,7 +97,7 @@ struct MainDeckView: View {
             .accessibilityHidden(isLaunchSplashVisible)
         }
         .blur(
-            radius: isComposerContentVisible && !reduceTransparency ? 1.5 : 0,
+            radius: isComposerContentVisible && !reduceTransparency ? 1.875 : 0,
             opaque: false
         )
         .overlay {
@@ -156,9 +158,11 @@ struct MainDeckView: View {
                 .frame(width: 0, height: 0)
         }
         .overlay {
-            if store.isComposerSheetPresented, let activeAccount = store.activeAccount {
+            if hasFinishedLaunchPresentation, let activeAccount = store.activeAccount {
                 composerOverlay(account: activeAccount)
                     .zIndex(45)
+                    .allowsHitTesting(store.isComposerSheetPresented && !isComposerDismissalPending)
+                    .accessibilityHidden(!store.isComposerSheetPresented)
             }
         }
         .overlay {
@@ -234,9 +238,16 @@ struct MainDeckView: View {
             beginLayoutResetReveal()
         }
         .onChange(of: store.isComposerSheetPresented) { isPresented in
-            guard !isPresented else { return }
+            if isPresented {
+                if isComposerReady { revealComposer() }
+                return
+            }
             isComposerContentVisible = false
             isComposerDismissalPending = false
+        }
+        .onChange(of: store.activeAccountID) { _ in
+            isComposerReady = false
+            composerGeneration += 1
         }
     }
 
@@ -593,6 +604,7 @@ struct MainDeckView: View {
                 onReady: revealComposer,
                 onDismiss: dismissComposer
             )
+                .id("\(account.id)-\(composerGeneration)")
                 .environmentObject(store)
                 .scaleEffect(isComposerContentVisible || reduceMotion ? 1 : 0.88)
                 .offset(y: isComposerContentVisible || reduceMotion ? 0 : 20)
@@ -613,6 +625,7 @@ struct MainDeckView: View {
     }
 
     private func revealComposer() {
+        isComposerReady = true
         guard store.isComposerSheetPresented,
               !isComposerDismissalPending,
               !isComposerContentVisible else { return }
@@ -622,6 +635,7 @@ struct MainDeckView: View {
     }
 
     private func dismissComposer() {
+        isComposerReady = false
         guard store.isComposerSheetPresented,
               !isComposerDismissalPending else { return }
         isComposerDismissalPending = true
@@ -635,6 +649,7 @@ struct MainDeckView: View {
             guard isComposerDismissalPending else { return }
             store.dismissComposer()
             isComposerDismissalPending = false
+            composerGeneration += 1
         }
     }
 

@@ -117,6 +117,7 @@ final class ColumnAppearanceTests: XCTestCase {
         var modalEditor = { closest: () => dialog };
         var document = {
           head: { appendChild: () => {} }, documentElement: {},
+          addEventListener: () => {},
           createElement: () => ({}),
           querySelectorAll: selector => selector.includes('tweetTextarea')
             ? (dialogOpen ? [timelineEditor, modalEditor] : [timelineEditor])
@@ -133,9 +134,11 @@ final class ColumnAppearanceTests: XCTestCase {
         XCTAssertEqual(context.evaluateScript("dialog.dataset.mosaicComposeDialog")?.toString(), "true")
         context.evaluateScript("""
         dialogOpen = false; dialog.isConnected = false;
-        update(); timers.splice(0).forEach(f => f()); update();
+        update();
         """)
         XCTAssertNil(context.exception)
+        XCTAssertEqual(context.evaluateScript("events.join(',')")?.toString(), "ready,dismissed")
+        context.evaluateScript("timers.splice(0).forEach(f => f()); update();")
         XCTAssertEqual(context.evaluateScript("events.join(',')")?.toString(), "ready,dismissed")
         XCTAssertTrue(context.evaluateScript("inline.dataset.mosaicComposeDialog === undefined")?.toBool() == true)
         XCTAssertTrue(context.evaluateScript("dialog.dataset.mosaicComposeDialog === undefined")?.toBool() == true)
