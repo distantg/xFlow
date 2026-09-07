@@ -400,6 +400,7 @@ struct WebColumnView: NSViewRepresentable {
 
         let webView = DeckWKWebView(frame: .zero, configuration: configuration)
         coordinator.deckWebView = webView
+        coordinator.mediaSuspensionState = nil
         webView.navigationDelegate = coordinator
         webView.uiDelegate = coordinator
         webView.underPageBackgroundColor = .clear
@@ -458,7 +459,7 @@ struct WebColumnView: NSViewRepresentable {
 
         if !isLive {
             if let webView = hostView.webView {
-                suspendMedia(in: webView, suspended: true)
+                suspendMedia(in: webView, suspended: true, coordinator: context.coordinator)
             }
             hostView.park(
                 captureState: { webView, completion in
@@ -476,7 +477,7 @@ struct WebColumnView: NSViewRepresentable {
             webView = makeWebView(coordinator: context.coordinator)
             hostView.install(webView)
         }
-        suspendMedia(in: webView, suspended: isMediaSuspended)
+        suspendMedia(in: webView, suspended: isMediaSuspended, coordinator: context.coordinator)
 
         update(webView: webView, coordinator: context.coordinator)
     }
@@ -543,7 +544,9 @@ struct WebColumnView: NSViewRepresentable {
         }
     }
 
-    private func suspendMedia(in webView: WKWebView, suspended: Bool) {
+    private func suspendMedia(in webView: WKWebView, suspended: Bool, coordinator: Coordinator) {
+        guard coordinator.mediaSuspensionState != suspended else { return }
+        coordinator.mediaSuspensionState = suspended
         if #available(macOS 11.3, *) {
             webView.setAllMediaPlaybackSuspended(suspended, completionHandler: nil)
         }
@@ -1642,12 +1645,15 @@ struct WebColumnView: NSViewRepresentable {
 
             [role="menu"],
             [data-testid="Dropdown"],
-            [data-testid="HoverCard"] {
-              background: var(--mosaic-float-surface) !important;
-              border: 1px solid var(--mosaic-hairline) !important;
+            [data-testid="HoverCard"],
+            [data-testid="primaryColumn"] [data-testid="HoverCard"],
+            #layers [data-testid="HoverCard"] {
+              background: var(--mosaic-transient-surface) !important;
+              border: 1px solid var(--mosaic-transient-border) !important;
               border-radius: 15px !important;
-              box-shadow: 0 18px 48px var(--mosaic-shadow) !important;
-              backdrop-filter: blur(28px) saturate(1.24) !important;
+              box-shadow: 0 18px 48px var(--mosaic-transient-shadow) !important;
+              -webkit-backdrop-filter: blur(30px) saturate(1.2) !important;
+              backdrop-filter: blur(30px) saturate(1.2) !important;
             }
 
             [data-testid="primaryColumn"] [data-mosaic-post-indicator="true"] {
@@ -1670,6 +1676,39 @@ struct WebColumnView: NSViewRepresentable {
 
             [data-testid="primaryColumn"] [data-mosaic-post-indicator="true"] * {
               background-color: transparent !important;
+            }
+
+            /* Match the header's dedicated optical layer. WebKit can skip
+               backdrop sampling on X's promoted popup container itself. */
+            [data-testid="HoverCard"],
+            [data-testid="primaryColumn"] [data-testid="HoverCard"],
+            #layers [data-testid="HoverCard"] {
+              isolation: isolate !important;
+              background: transparent !important;
+              opacity: 1 !important;
+              filter: none !important;
+              -webkit-backdrop-filter: none !important;
+              backdrop-filter: none !important;
+            }
+            [data-testid="HoverCard"]::before,
+            [data-testid="primaryColumn"] [data-testid="HoverCard"]::before,
+            #layers [data-testid="HoverCard"]::before {
+              content: "" !important;
+              position: absolute !important;
+              inset: 0 !important;
+              z-index: -1 !important;
+              pointer-events: none !important;
+              border-radius: inherit !important;
+              background: var(--mosaic-tab-surface) !important;
+              transform: translateZ(0);
+              -webkit-backdrop-filter: blur(64px) saturate(0.78) contrast(0.92) brightness(1.02) !important;
+              backdrop-filter: blur(64px) saturate(0.78) contrast(0.92) brightness(1.02) !important;
+            }
+            /* Drop-shadow filters on portal wrappers isolate the card from
+               the page pixels that its backdrop layer needs to sample. */
+            #layers div:has([data-testid="HoverCard"]) {
+              filter: none !important;
+              will-change: auto !important;
             }
 
             [data-testid="primaryColumn"] a:focus-visible,
@@ -1772,7 +1811,13 @@ struct WebColumnView: NSViewRepresentable {
               [data-testid="primaryColumn"] [data-mosaic-composer="true"]::before,
               [role="menu"],
               [data-testid="Dropdown"],
-              [data-testid="HoverCard"] {
+              [data-testid="HoverCard"],
+              [data-testid="primaryColumn"] [data-testid="HoverCard"],
+              #layers [data-testid="HoverCard"],
+              [data-testid="HoverCard"]::before,
+              [data-testid="primaryColumn"] [data-testid="HoverCard"]::before,
+              #layers [data-testid="HoverCard"]::before {
+                -webkit-backdrop-filter: none !important;
                 backdrop-filter: none !important;
               }
             }
@@ -1780,6 +1825,7 @@ struct WebColumnView: NSViewRepresentable {
             @media (prefers-reduced-motion: reduce) {
               [data-testid="primaryColumn"] * { transition-duration: 0.001ms !important; transition-delay: 0ms !important; }
             }
+            \(DirectMessageTheme.css)
           `;
 
           function markInlineComposers() {
@@ -2261,7 +2307,14 @@ struct WebColumnView: NSViewRepresentable {
           installTopTabInteraction();
           setColumnMenuVisible(true);
           if (!globalThis.__mosaicComposerObserver && typeof MutationObserver !== 'undefined' && document.body) {
-            globalThis.__mosaicComposerObserver = new MutationObserver(() => {
+            globalThis.__mosaicComposerObserver = new MutationObserver(records => {
+              // Chat rows are styled entirely by CSS. Scrolling recycles those
+              // rows continuously; timeline scans would force layout every frame.
+              const chatOnly = records.length > 0 && records.every(record => {
+                const target = record.target.nodeType === 1 ? record.target : record.target.parentElement;
+                return target && target.closest && target.closest('[data-testid="dm-container"]');
+              });
+              if (chatOnly) return;
               if (globalThis.__mosaicRefreshFrame) return;
               globalThis.__mosaicRefreshFrame = requestAnimationFrame(() => {
                 globalThis.__mosaicRefreshFrame = 0;
@@ -2387,6 +2440,7 @@ struct WebColumnView: NSViewRepresentable {
         var onUnreadNotificationCountChanged: ((Int, NotificationActivity?) -> Void)?
         var onComposerPresentationReady: (() -> Void)?
         var onComposerDismissed: (() -> Void)?
+        var mediaSuspensionState: Bool?
         weak var deckWebView: DeckWKWebView?
         var columnAppearanceMode: ColumnAppearanceMode
         var appliedColumnAppearanceMode: ColumnAppearanceMode?
@@ -2434,6 +2488,9 @@ struct WebColumnView: NSViewRepresentable {
             onNavigation?(webView.url)
             onPageTitle?(webView.title)
             deckWebView?.resetColumnMenuScrollState(restoringPosition: restorationState != nil)
+            if let suspended = mediaSuspensionState {
+                webView.evaluateJavaScript("window.__mosaicBackgroundSuspended = \(suspended ? "true" : "false");")
+            }
             applyFilter(to: webView)
             applyColumnAppearance(to: webView)
             restoreCapturedPosition(in: webView)

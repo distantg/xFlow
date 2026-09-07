@@ -118,6 +118,10 @@ final class WebSessionPool {
     func configuration(for accountID: UUID) -> WKWebViewConfiguration {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = dataStore(for: accountID)
+        // X starts some players after asynchronous source setup. WebKit's
+        // gesture gate can otherwise reject a play initiated by that UI click.
+        // X still controls autoplay; Mosaic suspends parked/background columns.
+        configuration.mediaTypesRequiringUserActionForPlayback = []
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
         configuration.preferences.isFraudulentWebsiteWarningEnabled = true
         return configuration
