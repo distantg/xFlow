@@ -1003,6 +1003,8 @@ struct WebColumnView: NSViewRepresentable {
             [data-testid="primaryColumn"] [data-mosaic-top-tab-shell="true"] {
               isolation: isolate !important;
               z-index: 30 !important;
+              border-radius: 0 0 14px 14px !important;
+              overflow: hidden !important;
               opacity: 1 !important;
               transform: translate3d(0, 0, 0) !important;
               transition:
@@ -1038,7 +1040,7 @@ struct WebColumnView: NSViewRepresentable {
               inset: 0 !important;
               z-index: 0 !important;
               pointer-events: none !important;
-              border-radius: inherit !important;
+              border-radius: 0 0 14px 14px !important;
               background-color: var(--mosaic-tab-surface) !important;
               box-shadow: inset 0 -1px 0 rgba(231, 216, 190, 0.12), 0 8px 20px var(--mosaic-shadow) !important;
               -webkit-backdrop-filter: blur(64px) saturate(0.78) contrast(0.92) brightness(1.02) !important;

@@ -1,6 +1,29 @@
 import AppKit
 import SwiftUI
 
+private struct BottomRoundedRectangle: Shape {
+    let radius: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let cornerRadius = min(radius, rect.width / 2, rect.height / 2)
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - cornerRadius))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.maxX - cornerRadius, y: rect.maxY),
+            control: CGPoint(x: rect.maxX, y: rect.maxY)
+        )
+        path.addLine(to: CGPoint(x: rect.minX + cornerRadius, y: rect.maxY))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.minX, y: rect.maxY - cornerRadius),
+            control: CGPoint(x: rect.minX, y: rect.maxY)
+        )
+        path.closeSubpath()
+        return path
+    }
+}
+
 struct ColumnCardView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -65,7 +88,7 @@ struct ColumnCardView: View {
                 onInitialContentReady: onInitialContentReady
             )
             .id("\(column.id.uuidString)-\(activeAccountID.uuidString)")
-            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .clipShape(BottomRoundedRectangle(radius: 13))
             .padding(.bottom, 6)
         }
         .clipShape(RoundedRectangle(cornerRadius: MosaicTheme.Radius.tile, style: .continuous))

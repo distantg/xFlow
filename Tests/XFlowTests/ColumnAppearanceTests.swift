@@ -163,6 +163,7 @@ final class ColumnAppearanceTests: XCTestCase {
         XCTAssertTrue(script.contains("opacity 180ms ease-out"))
         XCTAssertTrue(script.contains("isolation: isolate !important"))
         XCTAssertTrue(script.contains("z-index: 30 !important"))
+        XCTAssertTrue(script.contains("border-radius: 0 0 14px 14px !important"))
         XCTAssertTrue(script.contains("--mosaic-tab-surface: rgba(247, 248, 246, 0.94)"))
         XCTAssertTrue(script.contains("const activeShells = new Set()"))
         XCTAssertTrue(script.contains("const maximumHeight = Math.max(156, tabRect.height + 92)"))
