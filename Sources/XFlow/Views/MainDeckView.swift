@@ -97,7 +97,7 @@ struct MainDeckView: View {
             .accessibilityHidden(isLaunchSplashVisible)
         }
         .blur(
-            radius: isComposerContentVisible && !reduceTransparency ? 1.875 : 0,
+            radius: (isComposerContentVisible || mediaRequest?.kind == .image) && !reduceTransparency ? 1.875 : 0,
             opaque: false
         )
         .overlay {
@@ -170,7 +170,7 @@ struct MainDeckView: View {
                     request: mediaRequest,
                     accountID: store.activeAccountID,
                     onClose: {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        withAnimation(MosaicMotion.expressive(reduceMotion: reduceMotion)) {
                             self.mediaRequest = nil
                         }
                     }
@@ -179,7 +179,7 @@ struct MainDeckView: View {
                 .zIndex(50)
             }
         }
-        .animation(.spring(response: 0.25, dampingFraction: 0.88), value: mediaRequest != nil)
+        .animation(MosaicMotion.expressive(reduceMotion: reduceMotion), value: mediaRequest != nil)
         .alert(item: $updateManager.alert) { updateAlert in
             if let downloadURL = updateAlert.downloadURL {
                 return Alert(
@@ -610,13 +610,8 @@ struct MainDeckView: View {
         .onExitCommand(perform: dismissComposer)
     }
 
-    @ViewBuilder
     private var composerBackdrop: some View {
-        if reduceTransparency {
-            Color.black.opacity(colorScheme == .dark ? 0.48 : 0.28)
-        } else {
-            Color.black.opacity(colorScheme == .dark ? 0.22 : 0.10)
-        }
+        MosaicModalBackdrop()
     }
 
     private func revealComposer() {

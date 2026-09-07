@@ -91,7 +91,7 @@ final class DeckStore: ObservableObject {
            let parsedAppearance = AppAppearanceMode(rawValue: rawAppearance) {
             appearanceMode = parsedAppearance
         } else {
-            appearanceMode = .auto
+            appearanceMode = .dark
         }
 
         columnAppearanceMode = ColumnAppearancePreference.load(from: defaults)
@@ -212,6 +212,7 @@ final class DeckStore: ObservableObject {
         }
 
         let removingActive = activeAccountID == accountID
+        AccountAvatarStorage.shared.remove(accountID)
         accounts.remove(at: removeIndex)
         profileMetaRefreshInFlight.remove(accountID)
         profileMetaRetryCount.removeValue(forKey: accountID)

@@ -6,13 +6,14 @@ import WebKit
 
 final class DeckWKWebView: WKWebView {
     var routeHorizontalScrollToParent: Bool = true
-    var capturesHorizontalScrollInTopTabRail = false {
+    var capturesHorizontalScrollInWebContent = false {
         didSet {
-            guard capturesHorizontalScrollInTopTabRail else { return }
+            guard capturesHorizontalScrollInWebContent else { return }
             isForwardingHorizontalSequence = false
             gestureAxisLock = .undecided
         }
     }
+    var photoCarouselRects: [CGRect] = []
     private var isForwardingHorizontalSequence = false
     private var gestureAxisLock: GestureAxisLock = .undecided
     private weak var columnMenuClipView: NSClipView?
@@ -67,7 +68,7 @@ final class DeckWKWebView: WKWebView {
         if let columnMenuClipView {
             lastColumnMenuScrollY = columnMenuClipView.bounds.minY
         }
-        columnMenuObservationReadyAt = ProcessInfo.processInfo.systemUptime + (restoringPosition ? 3.4 : 0.24)
+        columnMenuObservationReadyAt = .infinity
         evaluateJavaScript("globalThis.__mosaicSetColumnMenuVisible && globalThis.__mosaicSetColumnMenuVisible(true);")
     }
 
@@ -92,8 +93,10 @@ final class DeckWKWebView: WKWebView {
 
         switch event.keyCode {
         case 116, 115: // Page Up, Home
+            columnMenuObservationReadyAt = 0
             setColumnMenuVisible(true)
         case 121, 119: // Page Down, End
+            columnMenuObservationReadyAt = 0
             setColumnMenuVisible(false)
         default:
             break
@@ -113,11 +116,14 @@ final class DeckWKWebView: WKWebView {
             // A direct trackpad or mouse-wheel gesture should never be swallowed by
             // the short restoration grace period used when a column initializes.
             columnMenuObservationReadyAt = 0
-            if !capturesHorizontalScrollInTopTabRail {
+            if !capturesHorizontalScrollInWebContent {
                 setColumnMenuVisible(event.scrollingDeltaY > 0)
             }
         }
-        if routeHorizontalScrollToParent && !capturesHorizontalScrollInTopTabRail {
+        let pointer = convert(event.locationInWindow, from: nil)
+        let webPoint = CGPoint(x: pointer.x, y: isFlipped ? pointer.y : bounds.height - pointer.y)
+        let isOverPhotoCarousel = photoCarouselRects.contains { $0.contains(webPoint) }
+        if routeHorizontalScrollToParent && !capturesHorizontalScrollInWebContent && !isOverPhotoCarousel {
             let horizontal = abs(event.scrollingDeltaX)
             let vertical = abs(event.scrollingDeltaY)
 
@@ -184,6 +190,7 @@ final class DeckWKWebView: WKWebView {
             }
         }
         super.scrollWheel(with: event)
+
     }
 
     private func nearestParentHorizontalScrollView() -> NSScrollView? {
@@ -308,7 +315,7 @@ struct WebColumnView: NSViewRepresentable {
     let refreshKey: String
     let accountID: UUID
     let filter: ColumnFilter
-    var columnAppearanceMode: ColumnAppearanceMode = .originalX
+    var columnAppearanceMode: ColumnAppearanceMode = .mosaicIntegrated
     var onNavigation: ((URL?) -> Void)? = nil
     var onDetectedHandle: ((String) -> Void)? = nil
     var onDetectedProfileImage: ((URL?) -> Void)? = nil
@@ -436,6 +443,7 @@ struct WebColumnView: NSViewRepresentable {
         coordinator.filter = filter
         coordinator.accountID = accountID
 
+        if enableChromeStripping { coordinator.observePostNavigation(in: webView) }
         webView.load(URLRequest(url: url))
         return webView
     }
@@ -1191,6 +1199,10 @@ struct WebColumnView: NSViewRepresentable {
               outline: none !important;
             }
 
+            [data-testid="primaryColumn"] [role="tablist"]:has([data-testid="tweetPhoto"]) {
+              overscroll-behavior-x: contain !important;
+            }
+
             [data-testid="primaryColumn"] [data-mosaic-top-tab-shell="true"] {
               isolation: isolate !important;
               z-index: 30 !important;
@@ -1542,6 +1554,28 @@ struct WebColumnView: NSViewRepresentable {
               background-color: var(--mosaic-surface-hover) !important;
               box-shadow: 0 5px 14px rgba(0, 0, 0, 0.08) !important;
               transform: none !important;
+            }
+
+            /* Count changes must not redistribute the action row by a pixel
+               when proportional digits (for example 1 and 2) change widths. */
+            [data-testid="primaryColumn"] [role="group"] :is(button, [role="button"], a),
+            [data-testid="primaryColumn"] :is([data-testid="like"], [data-testid="unlike"]) {
+              font-variant-numeric: tabular-nums !important;
+            }
+
+            [data-testid="primaryColumn"] :is([data-testid="like"], [data-testid="unlike"]) svg {
+              display: block !important;
+              flex-shrink: 0 !important;
+              vertical-align: middle !important;
+            }
+
+            /* Keep the like sprite-to-SVG handoff out of Mosaic's hover
+               filter/transform transitions. X retains its own heart animation. */
+            [data-testid="primaryColumn"] :is([data-testid="like"], [data-testid="unlike"]),
+            [data-testid="primaryColumn"] :is([data-testid="like"], [data-testid="unlike"]):hover {
+              filter: none !important;
+              transform: none !important;
+              transition: background-color 120ms ease-out, box-shadow 120ms ease-out !important;
             }
 
             /* X applies small translate/scale changes to the post-header action
@@ -1944,6 +1978,29 @@ struct WebColumnView: NSViewRepresentable {
               shell.dataset.mosaicColumnMenuVisible = !menuState || menuState.visible !== false ? 'true' : 'false';
               updateTopTabOverflow(tabList);
             });
+            // Detail pages (Post, Liked, Reposted) have a back/title header
+            // without a tablist. Give that sticky shell the same glass and motion.
+            document.querySelectorAll('[data-testid="primaryColumn"] h1, [data-testid="primaryColumn"] h2, [data-testid="primaryColumn"] [role="heading"]').forEach(heading => {
+              if (heading.closest('article, [data-testid="cellInnerDiv"], [data-testid="tweet"], [role="dialog"], [data-testid="dm-container"]')) return;
+              const primary = heading.closest('[data-testid="primaryColumn"]');
+              let candidate = heading.parentElement;
+              while (candidate && candidate !== primary) {
+                const rect = candidate.getBoundingClientRect();
+                if (rect.height > 156) break;
+                const style = getComputedStyle(candidate);
+                if ((style.position === 'sticky' || style.position === 'fixed') && rect.height > 0) {
+                  // A tab shell already includes its title row; don't nest materials.
+                  if (Array.from(activeShells).some(shell => shell === candidate || shell.contains(candidate) || candidate.contains(shell))) break;
+                  activeShells.add(candidate);
+                  candidate.dataset.mosaicTopTabShell = 'true';
+                  candidate.dataset.mosaicNeedsPositioning = 'false';
+                  const state = globalThis.__mosaicColumnMenuMotion;
+                  candidate.dataset.mosaicColumnMenuVisible = !state || state.visible !== false ? 'true' : 'false';
+                  break;
+                }
+                candidate = candidate.parentElement;
+              }
+            });
             document.querySelectorAll('[data-mosaic-top-tab-rail="true"]').forEach(rail => {
               if (activeRails.has(rail)) return;
               delete rail.dataset.mosaicTopTabRail;
@@ -1958,6 +2015,7 @@ struct WebColumnView: NSViewRepresentable {
               delete shell.dataset.mosaicNeedsPositioning;
             });
             updateTopTabScrollState();
+            postTopTabCapture();
           }
 
           function currentColumnScrollOffset(scrollTarget) {
@@ -1982,16 +2040,15 @@ struct WebColumnView: NSViewRepresentable {
           }
 
           function columnMenuMotionState() {
-            if (!globalThis.__mosaicColumnMenuMotion) {
-              const initializedAt = columnMenuClock();
+            const route = typeof location === 'undefined' ? '' : location.pathname + location.search;
+            if (!globalThis.__mosaicColumnMenuMotion || globalThis.__mosaicColumnMenuMotion.route !== route) {
               globalThis.__mosaicColumnMenuMotion = {
                 lastOffset: currentColumnScrollOffset(),
                 visible: true,
-                /* X can restore a saved scroll position in several delayed
-                   layout passes. Keep that restoration from impersonating a
-                   user gesture; wheel and keyboard intent clear this grace
-                   immediately. */
-                settleUntil: initializedAt + 3600
+                route,
+                // Reply navigation scrolls to the selected reply automatically.
+                // Only actual wheel/keyboard intent should end this protection.
+                settleUntil: Infinity
               };
             }
             return globalThis.__mosaicColumnMenuMotion;
@@ -2177,10 +2234,18 @@ struct WebColumnView: NSViewRepresentable {
             });
           }
 
-          function postTopTabCapture(active) {
+          let lastTopTabCapture = false;
+          function postTopTabCapture(active = lastTopTabCapture) {
+            lastTopTabCapture = Boolean(active);
             try {
               const handler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.xflowTopTabScrollCapture;
-              if (handler) handler.postMessage(Boolean(active));
+              if (handler) {
+                const photoRects = Array.from(document.querySelectorAll('[role="tablist"]'))
+                  .filter(rail => photoCarouselAt(rail))
+                  .map(rail => { const r = rail.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; })
+                  .filter(r => r.y < window.innerHeight && r.y + r.height > 0);
+                handler.postMessage({ active: Boolean(active), photoRects });
+              }
             } catch (_) {}
           }
 
@@ -2230,18 +2295,55 @@ struct WebColumnView: NSViewRepresentable {
             motion.frame = requestAnimationFrame(glide);
           }
 
+          // Photo carousels own horizontal gestures even at their first/last
+          // image. Never hand a boundary gesture to the surrounding deck.
+          function photoCarouselAt(target) {
+            const rail = target && target.closest && target.closest('[role="tablist"]');
+            return rail && rail.querySelector('[data-testid="tweetPhoto"]') &&
+              rail.scrollWidth > rail.clientWidth + 1 ? rail : null;
+          }
+
+          const photoWheelSessions = new WeakMap();
+          function scrollPhotoCarousel(carousel, delta) {
+            let session = photoWheelSessions.get(carousel);
+            if (!session) {
+              session = { value: carousel.style.getPropertyValue('scroll-snap-type'), priority: carousel.style.getPropertyPriority('scroll-snap-type'), timer: 0 };
+              photoWheelSessions.set(carousel, session);
+            }
+            clearTimeout(session.timer);
+            // Mandatory snapping otherwise cancels each small wheel increment.
+            carousel.style.setProperty('scroll-snap-type', 'none', 'important');
+            carousel.scrollLeft += delta;
+            session.timer = setTimeout(() => {
+              if (session.value) carousel.style.setProperty('scroll-snap-type', session.value, session.priority);
+              else carousel.style.removeProperty('scroll-snap-type');
+              photoWheelSessions.delete(carousel);
+            }, 180);
+          }
+
           function installTopTabInteraction() {
             if (globalThis.__mosaicTopTabHandlers || typeof document.addEventListener !== 'function') return;
             const handlers = {
               pointerover(event) {
                 const tabList = event.target && event.target.closest && event.target.closest('[data-mosaic-top-tab-rail="true"]');
-                if (tabList) postTopTabCapture(updateTopTabOverflow(tabList));
+                postTopTabCapture(Boolean(photoCarouselAt(event.target)) || Boolean(tabList && updateTopTabOverflow(tabList)));
               },
               pointerout(event) {
-                const tabList = event.target && event.target.closest && event.target.closest('[data-mosaic-top-tab-rail="true"]');
-                if (tabList && (!event.relatedTarget || !tabList.contains(event.relatedTarget))) postTopTabCapture(false);
+                const nextRail = event.relatedTarget && event.relatedTarget.closest && event.relatedTarget.closest('[data-mosaic-top-tab-rail="true"]');
+                postTopTabCapture(Boolean(photoCarouselAt(event.relatedTarget)) || Boolean(nextRail && updateTopTabOverflow(nextRail)));
               },
               wheel(event) {
+                const carousel = photoCarouselAt(event.target);
+                if (carousel) {
+                  postTopTabCapture(true);
+                  if (Math.abs(event.deltaX) >= Math.abs(event.deltaY)) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const scale = event.deltaMode === 1 ? 18 : (event.deltaMode === 2 ? carousel.clientWidth : 1);
+                    scrollPhotoCarousel(carousel, event.deltaX * scale);
+                    return;
+                  }
+                }
                 const tabList = event.target && event.target.closest && event.target.closest('[data-mosaic-top-tab-rail="true"]');
                 if (!tabList || !updateTopTabOverflow(tabList)) {
                   noteColumnMenuScrollIntent(event.deltaY);
@@ -2287,13 +2389,16 @@ struct WebColumnView: NSViewRepresentable {
                 const tabList = event.target && event.target.closest && event.target.closest('[data-mosaic-top-tab-rail="true"]');
                 if (tabList) updateTopTabOverflow(tabList);
                 updateTopTabScrollState(event.target);
-              }
+                postTopTabCapture();
+              },
+              resize() { postTopTabCapture(); }
             };
             document.addEventListener('pointerover', handlers.pointerover, true);
             document.addEventListener('pointerout', handlers.pointerout, true);
             document.addEventListener('wheel', handlers.wheel, { capture: true, passive: false });
             document.addEventListener('keydown', handlers.keydown, true);
             document.addEventListener('scroll', handlers.scroll, true);
+            window.addEventListener('resize', handlers.resize);
             globalThis.__mosaicTopTabHandlers = handlers;
           }
 
@@ -2356,6 +2461,7 @@ struct WebColumnView: NSViewRepresentable {
             document.removeEventListener('wheel', handlers.wheel, true);
             document.removeEventListener('keydown', handlers.keydown, true);
             document.removeEventListener('scroll', handlers.scroll, true);
+            window.removeEventListener('resize', handlers.resize);
             delete globalThis.__mosaicTopTabHandlers;
           }
           try {
@@ -2479,6 +2585,51 @@ struct WebColumnView: NSViewRepresentable {
             self.enableBroadHandleDetection = enableBroadHandleDetection
             self.onPageReadyScript = onPageReadyScript
         }
+
+        private var postURLObservation: NSKeyValueObservation?
+        private var postRecoveryWork: DispatchWorkItem?
+        private var postRecoveryURL: URL?
+        private var hasRetriedPost = false
+
+        func observePostNavigation(in webView: WKWebView) {
+            postURLObservation = webView.observe(\.url, options: [.new]) { [weak self] webView, _ in
+                guard let self else { return }
+                let target = webView.url
+                guard target != self.postRecoveryURL else { return }
+                (webView as? DeckWKWebView)?.resetColumnMenuScrollState(restoringPosition: true)
+                self.postRecoveryWork?.cancel()
+                self.postRecoveryURL = target
+                self.hasRetriedPost = false
+                guard let target, TrustedURLPolicy.isTrustedXPage(target),
+                      target.path.range(of: "^/[^/]+/status/[0-9]+/?$", options: .regularExpression) != nil else { return }
+                let work = DispatchWorkItem { [weak self, weak webView] in
+                    guard let self, let webView, webView.url == target,
+                          !webView.isLoading, !self.hasRetriedPost else { return }
+                    webView.evaluateJavaScript(Self.stalledPostScript) { [weak self, weak webView] result, _ in
+                        guard let self, let webView, webView.url == target,
+                              self.postRecoveryURL == target,
+                              !self.hasRetriedPost, result as? Bool == true else { return }
+                        self.hasRetriedPost = true
+                        // Reload the current entry rather than pushing another
+                        // navigation, preserving Back to the original timeline.
+                        webView.reload()
+                    }
+                }
+                self.postRecoveryWork = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + 12, execute: work)
+            }
+        }
+
+        static let stalledPostScript = """
+        (() => {
+          if (document.hidden || document.readyState !== 'complete') return false;
+          const primary = document.querySelector('[data-testid="primaryColumn"]');
+          if (!primary) return false;
+          // Never reload usable content, explicit errors, or an active editor.
+          if (primary.querySelector('article, [data-testid="tweet"], [role="alert"], [contenteditable="true"], textarea, input')) return false;
+          return Boolean(primary.querySelector('[role="progressbar"]'));
+        })()
+        """
 
         func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
             onNavigation?(webView.url)
@@ -2805,8 +2956,16 @@ struct WebColumnView: NSViewRepresentable {
             }
 
             if message.name == Self.topTabScrollMessageName {
-                let isCapturing = (message.body as? NSNumber)?.boolValue ?? (message.body as? Bool) ?? false
-                deckWebView?.capturesHorizontalScrollInTopTabRail = isCapturing
+                let payload = message.body as? [String: Any]
+                let isCapturing = (payload?["active"] as? Bool) ?? (message.body as? Bool) ?? false
+                deckWebView?.photoCarouselRects = (payload?["photoRects"] as? [[String: Double]] ?? []).compactMap { rect in
+                    guard let x = rect["x"], let y = rect["y"],
+                          let width = rect["width"], let height = rect["height"],
+                          x.isFinite, y.isFinite, width.isFinite, height.isFinite,
+                          width > 0, height > 0 else { return nil }
+                    return CGRect(x: x, y: y, width: width, height: height)
+                }
+                deckWebView?.capturesHorizontalScrollInWebContent = isCapturing
                 return
             }
 

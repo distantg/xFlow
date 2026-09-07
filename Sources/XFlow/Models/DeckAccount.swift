@@ -107,6 +107,23 @@ final class WebSessionPool {
     static let shared = WebSessionPool()
 
     private var stores: [UUID: WKWebsiteDataStore] = [:]
+    private var avatarCookieObservers: [UUID: AvatarCookieObserver] = [:]
+
+    private final class AvatarCookieObserver: NSObject, WKHTTPCookieStoreObserver {
+        let accountID: UUID
+        init(accountID: UUID) { self.accountID = accountID }
+        func cookiesDidChange(in cookieStore: WKHTTPCookieStore) {
+            cookieStore.getAllCookies { [weak self] cookies in
+                let authenticated = cookies.contains {
+                    $0.name.lowercased() == "auth_token" && WebSessionPool.isCookieApplicableToXHome($0)
+                }
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    AccountAvatarSession.shared.setAuthenticated(authenticated, accountID: self.accountID)
+                }
+            }
+        }
+    }
     private var profileProbes: [UUID: ProfileMetaProbe] = [:]
     private var pendingProfileMetaCallbacks: [UUID: [(AccountProfileMeta?) -> Void]] = [:]
     private let pendingStorePurgeKey = "xflow.pendingWebsiteDataStorePurges.v1"
@@ -181,6 +198,10 @@ final class WebSessionPool {
         profileProbes.removeValue(forKey: accountID)?.cancel()
         pendingProfileMetaCallbacks.removeValue(forKey: accountID)
         let store = stores.removeValue(forKey: accountID)
+        if let observer = avatarCookieObservers.removeValue(forKey: accountID) {
+            store?.httpCookieStore.remove(observer)
+        }
+        AccountAvatarSession.shared.setAuthenticated(false, accountID: accountID)
 
         store?.removeData(
             ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
@@ -258,6 +279,10 @@ final class WebSessionPool {
         }
 
         stores[accountID] = created
+        let observer = AvatarCookieObserver(accountID: accountID)
+        avatarCookieObservers[accountID] = observer
+        created.httpCookieStore.add(observer)
+        observer.cookiesDidChange(in: created.httpCookieStore)
         return created
     }
 

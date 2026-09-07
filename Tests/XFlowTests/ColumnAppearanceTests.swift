@@ -3,9 +3,9 @@ import XCTest
 @testable import XFlow
 
 final class ColumnAppearanceTests: XCTestCase {
-    func testPreferenceDefaultsToOriginalX() throws {
+    func testPreferenceDefaultsToMosaic() throws {
         let defaults = try makeDefaults()
-        XCTAssertEqual(ColumnAppearancePreference.load(from: defaults), .originalX)
+        XCTAssertEqual(ColumnAppearancePreference.load(from: defaults), .mosaicIntegrated)
     }
 
     func testPreferencePersistsIntegratedMode() throws {
@@ -14,10 +14,10 @@ final class ColumnAppearanceTests: XCTestCase {
         XCTAssertEqual(ColumnAppearancePreference.load(from: defaults), .mosaicIntegrated)
     }
 
-    func testInvalidPreferenceFallsBackToOriginalX() throws {
+    func testInvalidPreferenceFallsBackToMosaic() throws {
         let defaults = try makeDefaults()
         defaults.set("future-mode", forKey: ColumnAppearancePreference.storageKey)
-        XCTAssertEqual(ColumnAppearancePreference.load(from: defaults), .originalX)
+        XCTAssertEqual(ColumnAppearancePreference.load(from: defaults), .mosaicIntegrated)
     }
 
     func testLaunchSessionRequiresSignedInUIAndWaitsThroughDialogs() throws {
@@ -230,7 +230,7 @@ final class ColumnAppearanceTests: XCTestCase {
         XCTAssertTrue(script.contains("const isScrolled = wasScrolled ? scrollOffset > 2 : scrollOffset > 12"))
         XCTAssertTrue(script.contains("globalThis.__mosaicColumnMenuMotion"))
         XCTAssertTrue(script.contains("visible: true"))
-        XCTAssertTrue(script.contains("settleUntil: initializedAt + 3600"))
+        XCTAssertTrue(script.contains("settleUntil: Infinity"))
         XCTAssertTrue(script.contains("noteColumnMenuScrollIntent(event.deltaY)"))
         XCTAssertTrue(script.contains("event.key === 'PageDown'"))
         XCTAssertTrue(script.contains("event.key === 'PageUp'"))

@@ -40,7 +40,7 @@ enum ColumnAppearancePreference {
     static func load(from defaults: UserDefaults) -> ColumnAppearanceMode {
         guard let rawValue = defaults.string(forKey: storageKey),
               let mode = ColumnAppearanceMode(rawValue: rawValue) else {
-            return .originalX
+            return .mosaicIntegrated
         }
         return mode
     }

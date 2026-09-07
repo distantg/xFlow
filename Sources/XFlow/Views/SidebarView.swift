@@ -255,17 +255,11 @@ struct SidebarView: View {
 
     private func accountAvatar(for account: DeckAccount?, size: CGFloat, isActive: Bool) -> some View {
         ZStack {
-            if let url = account.flatMap(accountAvatarURL(for:)) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    default:
-                        placeholderAvatar
-                    }
+            if let account {
+                PersistentAccountAvatar(accountID: account.id, url: accountAvatarURL(for: account)) {
+                    placeholderAvatar
                 }
+                .id(account.id)
             } else {
                 placeholderAvatar
             }

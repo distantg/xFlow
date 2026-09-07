@@ -16,6 +16,7 @@ struct MediaLightboxView: View {
         ZStack {
             lightboxBackdrop
                 .ignoresSafeArea()
+                .contentShape(Rectangle())
                 .onTapGesture {
                     onClose()
                 }
@@ -55,8 +56,13 @@ struct MediaLightboxView: View {
         }
     }
 
+    @ViewBuilder
     private var lightboxBackdrop: some View {
-        Color.black.opacity(colorScheme == .dark ? 0.48 : 0.25)
+        if request.kind == .image {
+            MosaicModalBackdrop()
+        } else {
+            Color.black.opacity(colorScheme == .dark ? 0.48 : 0.25)
+        }
     }
 
     private var lightboxSurface: some View {
@@ -179,45 +185,40 @@ private struct FallbackRemoteImageView: View {
     let preferredURL: URL
     let fallbackURL: URL
 
-    @State private var activeURL: URL
-    @State private var hasTriedFallback = false
-
-    init(preferredURL: URL, fallbackURL: URL) {
-        self.preferredURL = preferredURL
-        self.fallbackURL = fallbackURL
-        _activeURL = State(initialValue: preferredURL)
-    }
+    @State private var loaded: ExpandedImagePayload?
+    @State private var failed = false
 
     var body: some View {
-        AsyncImage(url: activeURL) { phase in
-            switch phase {
-            case .success(let image):
-                image
-                    .resizable()
-                    .scaledToFit()
-            case .failure:
-                if !hasTriedFallback && activeURL != fallbackURL {
-                    ProgressView()
-                        .controlSize(.large)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(Color.black.opacity(0.45))
-                        .task {
-                            hasTriedFallback = true
-                            activeURL = fallbackURL
-                        }
-                } else {
-                    Color.black.opacity(0.55)
-                        .overlay(
-                            Text("Could not load image")
-                                .foregroundStyle(.white.opacity(0.9))
-                        )
-                }
-            default:
+        Group {
+            if let loaded {
+                ExpandedImageView(payload: loaded)
+            } else if failed {
+                Color.black.opacity(0.55)
+                    .overlay(Text("Could not load image").foregroundStyle(.white.opacity(0.9)))
+            } else {
                 ProgressView()
                     .controlSize(.large)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.black.opacity(0.45))
             }
+        }
+        .task(id: preferredURL) {
+            loaded = nil
+            failed = false
+            for url in preferredURL == fallbackURL ? [preferredURL] : [preferredURL, fallbackURL] {
+                do {
+                    let (data, response) = try await URLSession.shared.data(from: url)
+                    try Task.checkCancellation()
+                    guard let response = response as? HTTPURLResponse,
+                          (200..<300).contains(response.statusCode),
+                          let payload = ExpandedImagePayload(data: data, url: url) else { continue }
+                    loaded = payload
+                    return
+                } catch {
+                    if Task.isCancelled { return }
+                }
+            }
+            failed = true
         }
     }
 }
