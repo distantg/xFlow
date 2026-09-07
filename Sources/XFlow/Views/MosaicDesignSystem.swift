@@ -58,6 +58,28 @@ struct MosaicBackdrop: NSViewRepresentable {
     }
 }
 
+/// A within-window material used for modal depth. Unlike `MosaicBackdrop`, this
+/// samples Mosaic's own content so web columns soften beneath an in-app overlay.
+struct MosaicInAppBlur: NSViewRepresentable {
+    var material: NSVisualEffectView.Material = .underWindowBackground
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = material
+        view.blendingMode = .withinWindow
+        view.state = .active
+        view.isEmphasized = true
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+        nsView.material = material
+        nsView.blendingMode = .withinWindow
+        nsView.state = .active
+        nsView.isEmphasized = true
+    }
+}
+
 enum MosaicSurfaceLevel {
     case base
     case tile

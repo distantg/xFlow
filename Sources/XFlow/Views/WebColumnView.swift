@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import SwiftUI
+import UniformTypeIdentifiers
 import WebKit
 
 final class DeckWKWebView: WKWebView {
@@ -305,6 +306,8 @@ struct WebColumnView: NSViewRepresentable {
     var onPageTitle: ((String?) -> Void)? = nil
     var onMediaRequest: ((MediaRequest) -> Void)? = nil
     var onUnreadNotificationCountChanged: ((Int, NotificationActivity?) -> Void)? = nil
+    var onComposerPresentationReady: (() -> Void)? = nil
+    var onComposerDismissed: (() -> Void)? = nil
     var enableChromeStripping: Bool = true
     var enableMediaCapture: Bool = true
     var enableHandleDetection: Bool = true
@@ -325,6 +328,8 @@ struct WebColumnView: NSViewRepresentable {
             onPageTitle: onPageTitle,
             onMediaRequest: onMediaRequest,
             onUnreadNotificationCountChanged: onUnreadNotificationCountChanged,
+            onComposerPresentationReady: onComposerPresentationReady,
+            onComposerDismissed: onComposerDismissed,
             columnAppearanceMode: columnAppearanceMode,
             enableHandleDetection: enableHandleDetection,
             enableAccountTextHandleDetection: enableAccountTextHandleDetection,
@@ -360,6 +365,15 @@ struct WebColumnView: NSViewRepresentable {
             contentController.add(coordinator, name: Coordinator.unreadCountMessageName)
             contentController.addUserScript(WKUserScript(
                 source: Coordinator.unreadCountScript,
+                injectionTime: .atDocumentEnd,
+                forMainFrameOnly: true
+            ))
+        }
+
+        if onComposerPresentationReady != nil || onComposerDismissed != nil {
+            contentController.add(coordinator, name: Coordinator.composerPresentationMessageName)
+            contentController.addUserScript(WKUserScript(
+                source: Coordinator.composerPresentationScript,
                 injectionTime: .atDocumentEnd,
                 forMainFrameOnly: true
             ))
@@ -467,6 +481,8 @@ struct WebColumnView: NSViewRepresentable {
         coordinator.onPageTitle = onPageTitle
         coordinator.onMediaRequest = onMediaRequest
         coordinator.onUnreadNotificationCountChanged = onUnreadNotificationCountChanged
+        coordinator.onComposerPresentationReady = onComposerPresentationReady
+        coordinator.onComposerDismissed = onComposerDismissed
         coordinator.columnAppearanceMode = columnAppearanceMode
         coordinator.enableHandleDetection = enableHandleDetection
         coordinator.enableAccountTextHandleDetection = enableAccountTextHandleDetection
@@ -556,6 +572,7 @@ struct WebColumnView: NSViewRepresentable {
         nsView.configuration.userContentController.removeScriptMessageHandler(forName: Coordinator.mediaMessageName)
         nsView.configuration.userContentController.removeScriptMessageHandler(forName: Coordinator.unreadCountMessageName)
         nsView.configuration.userContentController.removeScriptMessageHandler(forName: Coordinator.topTabScrollMessageName)
+        nsView.configuration.userContentController.removeScriptMessageHandler(forName: Coordinator.composerPresentationMessageName)
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
@@ -568,6 +585,157 @@ struct WebColumnView: NSViewRepresentable {
         static let mediaMessageName = "xflowMediaRequest"
         static let unreadCountMessageName = "xflowUnreadCount"
         static let topTabScrollMessageName = "xflowTopTabScrollCapture"
+        static let composerPresentationMessageName = "xflowComposerPresentation"
+        static let composerAttachmentContentTypes: [UTType] = [.image, .movie]
+
+        static let composerPresentationScript = """
+        (function() {
+          if (window.__mosaicComposerPresentationInstalled) return;
+          window.__mosaicComposerPresentationInstalled = true;
+
+          const style = document.createElement('style');
+          style.id = 'mosaic-composer-presentation-style';
+          style.textContent = `
+            html,
+            body,
+            #react-root,
+            [data-testid="react-root"] {
+              background: transparent !important;
+              background-color: transparent !important;
+              overflow: hidden !important;
+            }
+
+            body * {
+              visibility: hidden !important;
+            }
+
+            [data-mosaic-compose-dialog="true"],
+            [data-mosaic-compose-dialog="true"] * {
+              visibility: visible !important;
+            }
+
+            [data-mosaic-compose-dialog="true"][data-mosaic-compose-mode="inline"] {
+              position: fixed !important;
+              top: 50% !important;
+              left: 50% !important;
+              width: min(760px, calc(100vw - 32px)) !important;
+              max-width: 760px !important;
+              transform: translate(-50%, -50%) !important;
+            }
+          `;
+          (document.head || document.documentElement).appendChild(style);
+
+          const installedAt = Date.now();
+          let hasSeenComposer = false;
+          let hasSeenDialog = false;
+          let hasReportedReady = false;
+          let hasReportedDismissal = false;
+          let dismissalTimer = 0;
+
+          function send(event) {
+            try {
+              const handler = window.webkit &&
+                window.webkit.messageHandlers &&
+                window.webkit.messageHandlers.xflowComposerPresentation;
+              if (handler) handler.postMessage({ event });
+            } catch (_) {}
+          }
+
+          function inlineComposer(editor) {
+            const primaryColumn = editor.closest('[data-testid="primaryColumn"]');
+            let candidate = editor.parentElement;
+            while (candidate && candidate !== primaryColumn) {
+              const hasPostButton = candidate.querySelector(
+                '[data-testid="tweetButton"], [data-testid="tweetButtonInline"]'
+              );
+              const hasMediaControls = candidate.querySelector(
+                '[data-testid="fileInput"], [data-testid="gifSearchButton"], [aria-label*="media" i]'
+              );
+              if (hasPostButton && hasMediaControls) {
+                let composer = candidate;
+                let ancestor = candidate.parentElement;
+                for (let level = 0; ancestor && ancestor !== primaryColumn && level < 4; level += 1) {
+                  if (ancestor.querySelector('a[href] img')) {
+                    composer = ancestor;
+                    break;
+                  }
+                  ancestor = ancestor.parentElement;
+                }
+                return composer;
+              }
+              candidate = candidate.parentElement;
+            }
+            return null;
+          }
+
+          function composerSurface() {
+            const editors = Array.from(document.querySelectorAll(
+              '[data-testid="tweetTextarea_0"], [contenteditable="true"][role="textbox"]'
+            ));
+            for (const editor of editors) {
+              const dialog = editor.closest('[role="dialog"], [data-testid="sheetDialog"]');
+              if (dialog) return { node: dialog, mode: 'dialog' };
+            }
+            // Closing X's dialog exposes the timeline editor. It must never
+            // become a replacement overlay or keep the native blur alive.
+            if (hasSeenDialog || !location.pathname.startsWith('/compose/post')) return null;
+            const editor = editors[0];
+            if (!editor) return null;
+            if (Date.now() - installedAt < 900) return null;
+            const inline = inlineComposer(editor);
+            return inline ? { node: inline, mode: 'inline' } : null;
+          }
+
+          function reportReadyAfterPaint(dialog) {
+            if (hasReportedReady) return;
+            hasReportedReady = true;
+            requestAnimationFrame(function() {
+              requestAnimationFrame(function() {
+                if (dialog.isConnected) send('ready');
+              });
+            });
+          }
+
+          function updatePresentation() {
+            if (hasReportedDismissal) return;
+            const surface = composerSurface();
+            if (surface) {
+              const dialog = surface.node;
+              if (dismissalTimer) {
+                clearTimeout(dismissalTimer);
+                dismissalTimer = 0;
+              }
+              hasSeenComposer = true;
+              if (surface.mode === 'dialog') hasSeenDialog = true;
+              document.querySelectorAll('[data-mosaic-compose-dialog="true"]').forEach(function(node) {
+                if (node !== dialog) delete node.dataset.mosaicComposeDialog;
+              });
+              dialog.dataset.mosaicComposeDialog = 'true';
+              dialog.dataset.mosaicComposeMode = surface.mode;
+              reportReadyAfterPaint(dialog);
+              return;
+            }
+
+            document.querySelectorAll('[data-mosaic-compose-dialog="true"]').forEach(function(node) {
+              delete node.dataset.mosaicComposeDialog;
+              delete node.dataset.mosaicComposeMode;
+            });
+            if (!hasSeenComposer || hasReportedDismissal || dismissalTimer) return;
+            dismissalTimer = setTimeout(function() {
+              dismissalTimer = 0;
+              if (composerSurface() || hasReportedDismissal) return;
+              hasReportedDismissal = true;
+              send('dismissed');
+            }, 180);
+          }
+
+          updatePresentation();
+          setTimeout(updatePresentation, 920);
+          const observer = new MutationObserver(updatePresentation);
+          observer.observe(document.documentElement, { childList: true, subtree: true });
+          window.__mosaicComposerPresentationObserver = observer;
+        })();
+        """
 
         static let mediaCaptureScript = """
         (function() {
@@ -2197,6 +2365,8 @@ struct WebColumnView: NSViewRepresentable {
         var onPageTitle: ((String?) -> Void)?
         var onMediaRequest: ((MediaRequest) -> Void)?
         var onUnreadNotificationCountChanged: ((Int, NotificationActivity?) -> Void)?
+        var onComposerPresentationReady: (() -> Void)?
+        var onComposerDismissed: (() -> Void)?
         weak var deckWebView: DeckWKWebView?
         var columnAppearanceMode: ColumnAppearanceMode
         var appliedColumnAppearanceMode: ColumnAppearanceMode?
@@ -2213,6 +2383,8 @@ struct WebColumnView: NSViewRepresentable {
             onPageTitle: ((String?) -> Void)?,
             onMediaRequest: ((MediaRequest) -> Void)?,
             onUnreadNotificationCountChanged: ((Int, NotificationActivity?) -> Void)?,
+            onComposerPresentationReady: (() -> Void)?,
+            onComposerDismissed: (() -> Void)?,
             columnAppearanceMode: ColumnAppearanceMode,
             enableHandleDetection: Bool,
             enableAccountTextHandleDetection: Bool,
@@ -2225,6 +2397,8 @@ struct WebColumnView: NSViewRepresentable {
             self.onPageTitle = onPageTitle
             self.onMediaRequest = onMediaRequest
             self.onUnreadNotificationCountChanged = onUnreadNotificationCountChanged
+            self.onComposerPresentationReady = onComposerPresentationReady
+            self.onComposerDismissed = onComposerDismissed
             self.columnAppearanceMode = columnAppearanceMode
             self.enableHandleDetection = enableHandleDetection
             self.enableAccountTextHandleDetection = enableAccountTextHandleDetection
@@ -2421,6 +2595,33 @@ struct WebColumnView: NSViewRepresentable {
 
         func webView(
             _ webView: WKWebView,
+            runOpenPanelWith parameters: WKOpenPanelParameters,
+            initiatedByFrame frame: WKFrameInfo,
+            completionHandler: @escaping ([URL]?) -> Void
+        ) {
+            guard Self.isTrustedFrame(frame) else {
+                completionHandler(nil)
+                return
+            }
+
+            let panel = NSOpenPanel()
+            panel.message = "Choose a photo or video to attach"
+            panel.prompt = "Choose"
+            panel.allowedContentTypes = Self.composerAttachmentContentTypes
+            panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+            panel.canChooseFiles = true
+            panel.canChooseDirectories = false
+            panel.canCreateDirectories = false
+            panel.resolvesAliases = true
+
+            // Keep WebKit's required completion handler on this stack until the
+            // native chooser closes. Releasing it early causes WebKit to abort.
+            let response = panel.runModal()
+            completionHandler(response == .OK ? panel.urls : nil)
+        }
+
+        func webView(
+            _ webView: WKWebView,
             createWebViewWith configuration: WKWebViewConfiguration,
             for navigationAction: WKNavigationAction,
             windowFeatures: WKWindowFeatures
@@ -2529,6 +2730,20 @@ struct WebColumnView: NSViewRepresentable {
             if message.name == Self.topTabScrollMessageName {
                 let isCapturing = (message.body as? NSNumber)?.boolValue ?? (message.body as? Bool) ?? false
                 deckWebView?.capturesHorizontalScrollInTopTabRail = isCapturing
+                return
+            }
+
+            if message.name == Self.composerPresentationMessageName {
+                guard let payload = message.body as? [String: Any],
+                      let event = payload["event"] as? String else { return }
+                switch event {
+                case "ready":
+                    onComposerPresentationReady?()
+                case "dismissed":
+                    onComposerDismissed?()
+                default:
+                    break
+                }
                 return
             }
 

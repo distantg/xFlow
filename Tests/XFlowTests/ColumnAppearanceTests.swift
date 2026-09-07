@@ -72,6 +72,7 @@ final class ColumnAppearanceTests: XCTestCase {
         for script in [
             WebColumnView.Coordinator.launchSessionStateScript,
             WebColumnView.Coordinator.initialContentReadyScript,
+            WebColumnView.Coordinator.composerPresentationScript,
             WebColumnView.Coordinator.structuralColumnChromeScript,
             WebColumnView.Coordinator.integratedColumnThemeScript,
             WebColumnView.Coordinator.removeIntegratedColumnThemeScript
@@ -86,6 +87,58 @@ final class ColumnAppearanceTests: XCTestCase {
 
             XCTAssertNil(exception, exception?.toString() ?? "Unexpected JavaScript syntax error")
         }
+    }
+
+    func testComposerPresentationIsolatesTheDialogAndReportsItsLifecycle() {
+        let script = WebColumnView.Coordinator.composerPresentationScript
+
+        XCTAssertTrue(script.contains("body *"))
+        XCTAssertTrue(script.contains("visibility: hidden !important"))
+        XCTAssertTrue(script.contains("[data-mosaic-compose-dialog=\"true\"] *"))
+        XCTAssertTrue(script.contains("[data-testid=\"tweetTextarea_0\"]"))
+        XCTAssertTrue(script.contains("editor.closest('[role=\"dialog\"]"))
+        XCTAssertTrue(script.contains("send('ready')"))
+        XCTAssertTrue(script.contains("send('dismissed')"))
+        XCTAssertTrue(script.contains("new MutationObserver(updatePresentation)"))
+    }
+
+    func testClosingDialogDoesNotPromoteTimelineComposer() throws {
+        let context = try XCTUnwrap(JSContext())
+        context.evaluateScript("""
+        var events = [], timers = [], update, dialogOpen = true;
+        var window = { webkit: { messageHandlers: {
+          xflowComposerPresentation: { postMessage: p => events.push(p.event) }
+        } } };
+        var location = { pathname: '/compose/post' };
+        var dialog = { dataset: {}, isConnected: true };
+        var inline = { dataset: {}, parentElement: null,
+          querySelector: () => ({}) };
+        var timelineEditor = { parentElement: inline, closest: () => null };
+        var modalEditor = { closest: () => dialog };
+        var document = {
+          head: { appendChild: () => {} }, documentElement: {},
+          createElement: () => ({}),
+          querySelectorAll: selector => selector.includes('tweetTextarea')
+            ? (dialogOpen ? [timelineEditor, modalEditor] : [timelineEditor])
+            : [dialog, inline].filter(n => n.dataset.mosaicComposeDialog === 'true')
+        };
+        function requestAnimationFrame(f) { f(); }
+        function setTimeout(f) { timers.push(f); return timers.length; }
+        function clearTimeout() {}
+        function MutationObserver(f) { update = f; this.observe = () => {}; }
+        """)
+        context.evaluateScript(WebColumnView.Coordinator.composerPresentationScript)
+        XCTAssertNil(context.exception)
+        XCTAssertEqual(context.evaluateScript("events.join(',')")?.toString(), "ready")
+        XCTAssertEqual(context.evaluateScript("dialog.dataset.mosaicComposeDialog")?.toString(), "true")
+        context.evaluateScript("""
+        dialogOpen = false; dialog.isConnected = false;
+        update(); timers.splice(0).forEach(f => f()); update();
+        """)
+        XCTAssertNil(context.exception)
+        XCTAssertEqual(context.evaluateScript("events.join(',')")?.toString(), "ready,dismissed")
+        XCTAssertTrue(context.evaluateScript("inline.dataset.mosaicComposeDialog === undefined")?.toBool() == true)
+        XCTAssertTrue(context.evaluateScript("dialog.dataset.mosaicComposeDialog === undefined")?.toBool() == true)
     }
 
     func testIntegratedThemeIsIdempotentAndRemovable() throws {

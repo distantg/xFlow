@@ -38,6 +38,8 @@ struct MainDeckView: View {
     @StateObject private var updateManager = UpdateManager()
     @State private var columnFrames: [UUID: CGRect] = [:]
     @State private var liveColumnIDs: Set<UUID> = []
+    @State private var isComposerContentVisible = false
+    @State private var isComposerDismissalPending = false
 
     private let columnSpacing: CGFloat = 10
     private let columnViewportCoordinateSpace = "mosaic-column-viewport"
@@ -92,6 +94,10 @@ struct MainDeckView: View {
             .background(deckGlassBackground)
             .accessibilityHidden(isLaunchSplashVisible)
         }
+        .blur(
+            radius: isComposerContentVisible && !reduceTransparency ? 1.5 : 0,
+            opaque: false
+        )
         .overlay {
             if isLaunchSplashVisible && !hasRestoredLaunchSession {
                 WebColumnView(
@@ -117,15 +123,20 @@ struct MainDeckView: View {
         }
         .task(id: hasPresentedLaunchSplash) {
             guard hasPresentedLaunchSplash else { return }
-            // Only reveal after visible content has rendered. Slow connections
-            // offer an explicit escape inside the splash instead of exposing preload UI.
+            // Only reveal after visible content has rendered. If X never resolves
+            // its hidden session probe, continue with the persisted deck instead
+            // of leaving Mosaic parked on the splash indefinitely.
             do {
                 try await Task.sleep(nanoseconds: 2_000_000_000)
                 var checks = 0
                 while isLaunchSplashVisible && !isLaunchContentReady {
                     try await Task.sleep(nanoseconds: 100_000_000)
                     checks += 1
-                    if checks >= 130 { allowsLaunchContinue = true }
+                    if checks >= 130 {
+                        allowsLaunchContinue = true
+                        dismissLaunchSplash()
+                        return
+                    }
                 }
                 dismissLaunchSplash()
             } catch { /* A cancelled launch must not schedule a later reveal. */ }
@@ -221,6 +232,11 @@ struct MainDeckView: View {
         }
         .onChange(of: store.layoutResetSignal) { _ in
             beginLayoutResetReveal()
+        }
+        .onChange(of: store.isComposerSheetPresented) { isPresented in
+            guard !isPresented else { return }
+            isComposerContentVisible = false
+            isComposerDismissalPending = false
         }
     }
 
@@ -564,25 +580,62 @@ struct MainDeckView: View {
 
     private func composerOverlay(account: DeckAccount) -> some View {
         ZStack {
-            Color.black.opacity(colorScheme == .dark ? 0.32 : 0.16)
+            composerBackdrop
                 .ignoresSafeArea()
+                .opacity(isComposerContentVisible ? 1 : 0)
+                .contentShape(Rectangle())
                 .onTapGesture {
-                    withAnimation(MosaicMotion.expressive(reduceMotion: reduceMotion)) {
-                        store.dismissComposer()
-                    }
+                    dismissComposer()
                 }
 
-            ComposerSheetView(account: account)
+            ComposerSheetView(
+                account: account,
+                onReady: revealComposer,
+                onDismiss: dismissComposer
+            )
                 .environmentObject(store)
-                .frame(maxWidth: 980, maxHeight: 760)
-                .padding(34)
-                .transition(
-                    .opacity.combined(
-                        with: .scale(scale: reduceMotion ? 1 : 0.78, anchor: .topLeading)
-                    )
-                )
+                .scaleEffect(isComposerContentVisible || reduceMotion ? 1 : 0.88)
+                .offset(y: isComposerContentVisible || reduceMotion ? 0 : 20)
+                .opacity(isComposerContentVisible ? 1 : 0)
+                .padding(28)
         }
         .animation(MosaicMotion.expressive(reduceMotion: reduceMotion), value: store.isComposerSheetPresented)
+        .onExitCommand(perform: dismissComposer)
+    }
+
+    @ViewBuilder
+    private var composerBackdrop: some View {
+        if reduceTransparency {
+            Color.black.opacity(colorScheme == .dark ? 0.48 : 0.28)
+        } else {
+            Color.black.opacity(colorScheme == .dark ? 0.22 : 0.10)
+        }
+    }
+
+    private func revealComposer() {
+        guard store.isComposerSheetPresented,
+              !isComposerDismissalPending,
+              !isComposerContentVisible else { return }
+        withAnimation(MosaicMotion.expressive(reduceMotion: reduceMotion)) {
+            isComposerContentVisible = true
+        }
+    }
+
+    private func dismissComposer() {
+        guard store.isComposerSheetPresented,
+              !isComposerDismissalPending else { return }
+        isComposerDismissalPending = true
+
+        withAnimation(MosaicMotion.expressive(reduceMotion: reduceMotion)) {
+            isComposerContentVisible = false
+        }
+
+        let dismissalDelay = reduceMotion ? 0.15 : 0.50
+        DispatchQueue.main.asyncAfter(deadline: .now() + dismissalDelay) {
+            guard isComposerDismissalPending else { return }
+            store.dismissComposer()
+            isComposerDismissalPending = false
+        }
     }
 
     private func switchAccount(to accountID: UUID) {
