@@ -1,7 +1,7 @@
 {
-  "latestVersion": "2.0",
-  "publishedAt": "2026-09-07T11:04:20Z",
-  "downloadURL": "https://github.com/distantg/xFlow/releases/tag/v2.0",
-  "releaseNotes": "Mosaic 2.0 introduces refined glass styling, Mosaic and Dark defaults, improved direct messages and navigation headers, persistent high-resolution account avatars, native image copy/save/share actions, and startup and memory improvements.",
+  "latestVersion": "2.0.1",
+  "publishedAt": "2026-09-07T12:01:11Z",
+  "downloadURL": "https://github.com/distantg/xFlow/releases/tag/v2.0.1",
+  "releaseNotes": "Mosaic 2.0.1 improves inline replies, keeps profile section tabs visible while scrolling, and matches the Get verified button to the app theme. The splash card automatically displays the current app version.",
   "minimumSupportedVersion": "1.0"
 }

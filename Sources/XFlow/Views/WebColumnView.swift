@@ -1220,11 +1220,21 @@ struct WebColumnView: NSViewRepresentable {
               backdrop-filter: none !important;
             }
 
-            [data-testid="primaryColumn"] [data-mosaic-top-tab-shell="true"][data-mosaic-needs-positioning="true"] {
+            /* Profile sections remain available while reading the timeline. */
+            [data-testid="primaryColumn"] [data-mosaic-top-tab-shell="true"][data-mosaic-profile-tabs="true"] {
+              position: sticky !important;
+              top: 0 !important;
+              opacity: 1 !important;
+              transform: none !important;
+              pointer-events: auto !important;
+              visibility: visible !important;
+            }
+
+            [data-testid="primaryColumn"] [data-mosaic-top-tab-shell="true"][data-mosaic-needs-positioning="true"]:not([data-mosaic-profile-tabs="true"]) {
               position: relative !important;
             }
 
-            [data-testid="primaryColumn"] [data-mosaic-top-tab-shell="true"][data-mosaic-column-menu-visible="false"] {
+            [data-testid="primaryColumn"] [data-mosaic-top-tab-shell="true"][data-mosaic-column-menu-visible="false"]:not([data-mosaic-profile-tabs="true"]) {
               opacity: 0 !important;
               transform: translate3d(0, calc(-100% - 8px), 0) !important;
               /* Stay solid through the first part of travel, then fade away. */
@@ -1333,6 +1343,34 @@ struct WebColumnView: NSViewRepresentable {
             /* X composites disabled controls as a dimmed layer, including their
                immediate wrappers. Render the visible label on the composer's own
                plane while retaining X's untouched button for input and accessibility. */
+            [data-testid="primaryColumn"] [data-mosaic-reply-opener="true"] {
+              position: absolute !important;
+              left: var(--mosaic-post-label-left) !important;
+              top: var(--mosaic-post-label-top) !important;
+              width: var(--mosaic-post-label-width) !important;
+              height: var(--mosaic-post-label-height) !important;
+              z-index: 6 !important;
+              padding: 0 !important;
+              border-radius: 999px !important;
+              border: 1.5px solid var(--mosaic-accent-line) !important;
+              background: var(--mosaic-accent-button) !important;
+              box-shadow: 0 0 5px var(--mosaic-post-halo-core), 0 0 18px var(--mosaic-post-halo), 0 6px 18px var(--mosaic-shadow) !important;
+              color: white !important;
+              -webkit-text-fill-color: white !important;
+              font: 700 15px -apple-system, BlinkMacSystemFont, sans-serif !important;
+              cursor: pointer !important;
+              display: flex !important;
+              align-items: center !important;
+              justify-content: center !important;
+              text-align: center !important;
+              opacity: 1 !important;
+            }
+            [data-testid="primaryColumn"] [data-mosaic-reply-opener="true"]:hover {
+              background: var(--mosaic-accent-button-hover) !important;
+            }
+            [data-mosaic-reply-covered="true"] { visibility: hidden !important; }
+            [data-mosaic-composer="true"]:has([data-mosaic-reply-opener="true"])::after { display: none !important; }
+
             [data-testid="primaryColumn"] [data-mosaic-composer="true"]::after {
               content: "" !important;
               position: absolute !important;
@@ -1453,6 +1491,19 @@ struct WebColumnView: NSViewRepresentable {
               opacity: 1 !important;
             }
 
+            [data-testid="primaryColumn"] a[href="/i/premium_sign_up"]:not(article a) {
+              border-radius: 999px !important;
+              min-height: 36px !important;
+              padding: 0 20px !important;
+              display: inline-flex !important;
+              align-items: center !important;
+              justify-content: center !important;
+              font-weight: 700 !important;
+              text-decoration: none !important;
+              -webkit-text-fill-color: rgba(255, 255, 255, 0.98) !important;
+            }
+
+            [data-testid="primaryColumn"] a[href="/i/premium_sign_up"]:not(article a),
             [data-testid="primaryColumn"] [data-testid="tweetButtonInline"]:not(:disabled):not([aria-disabled="true"]),
             [data-testid="primaryColumn"] :is(button, [role="button"]):is([data-testid$="-follow"], [data-testid$="-unfollow"]):not(:disabled):not([aria-disabled="true"]) {
               color: rgba(255, 255, 255, 0.98) !important;
@@ -1463,6 +1514,7 @@ struct WebColumnView: NSViewRepresentable {
               opacity: 1 !important;
             }
 
+            [data-testid="primaryColumn"] a[href="/i/premium_sign_up"]:not(article a) *,
             [data-testid="primaryColumn"] [data-testid="tweetButtonInline"]:not(:disabled):not([aria-disabled="true"]) *,
             [data-testid="primaryColumn"] :is(button, [role="button"]):is([data-testid$="-follow"], [data-testid$="-unfollow"]):not(:disabled):not([aria-disabled="true"]) * {
               color: rgba(255, 255, 255, 0.98) !important;
@@ -1470,6 +1522,7 @@ struct WebColumnView: NSViewRepresentable {
               text-shadow: none !important;
             }
 
+            [data-testid="primaryColumn"] a[href="/i/premium_sign_up"]:not(article a):hover,
             [data-testid="primaryColumn"] [data-testid="tweetButtonInline"]:not(:disabled):not([aria-disabled="true"]):hover,
             [data-testid="primaryColumn"] :is(button, [role="button"]):is([data-testid$="-follow"], [data-testid$="-unfollow"]):not(:disabled):not([aria-disabled="true"]):hover {
               color: rgba(255, 255, 255, 0.98) !important;
@@ -1875,13 +1928,16 @@ struct WebColumnView: NSViewRepresentable {
               composer.style.removeProperty('--mosaic-post-label-height');
               composer.style.removeProperty('--mosaic-composer-label-image');
             });
-            document.querySelectorAll('[data-testid="tweetTextarea_0"]').forEach(editor => {
+            const activeOpeners = new Set();
+            document.querySelectorAll('[data-mosaic-reply-covered="true"]').forEach(button => delete button.dataset.mosaicReplyCovered);
+            Array.from(document.querySelectorAll('[data-testid="tweetTextarea_0"], [role="textbox"], textarea, [aria-label="Post text"]'))
+              .filter(editor => !editor.querySelector('[role="textbox"]')).forEach(editor => {
               const primaryColumn = editor.closest('[data-testid="primaryColumn"]');
               let candidate = editor.parentElement;
               while (candidate && candidate !== primaryColumn) {
-                const hasPostButton = candidate.querySelector('[data-testid="tweetButtonInline"]');
+                const hasPostButton = candidate.querySelector('[data-testid="tweetButtonInline"], [data-testid="tweetButton"]');
                 const hasMediaControls = candidate.querySelector('[data-testid="fileInput"], [data-testid="gifSearchButton"]');
-                if (hasPostButton && hasMediaControls) {
+                if (hasPostButton && (hasMediaControls || /\\/status\\/\\d+\\/?$/.test(location.pathname))) {
                   let composer = candidate;
                   let ancestor = candidate.parentElement;
                   for (let level = 0; ancestor && ancestor !== primaryColumn && level < 4; level += 1) {
@@ -1908,10 +1964,46 @@ struct WebColumnView: NSViewRepresentable {
                   composer.style.setProperty('--mosaic-post-label-top', `${buttonRect.top - composerRect.top}px`);
                   composer.style.setProperty('--mosaic-post-label-width', `${buttonRect.width}px`);
                   composer.style.setProperty('--mosaic-post-label-height', `${buttonRect.height}px`);
+                  // Empty replies cannot be submitted. Keep the visible action
+                  // useful by focusing the inline editor without enabling submission.
+                  let opener = composer.querySelector('[data-mosaic-reply-opener="true"]');
+                  const emptyReply = isReplyAction && primaryColumn &&
+                    !(editor.value || editor.textContent || '').trim() &&
+                    (hasPostButton.disabled || hasPostButton.getAttribute('aria-disabled') === 'true');
+                  if (emptyReply) {
+                    if (!opener) {
+                      opener = document.createElement('button');
+                      opener.type = 'button';
+                      opener.textContent = 'Reply';
+                      opener.dataset.mosaicReplyOpener = 'true';
+                      composer.appendChild(opener);
+                    }
+                    opener.onclick = event => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      // Focus X's existing editor to expand its inline toolbar,
+                      // preserving the draft and the post above it.
+                      editor.focus();
+                      editor.click();
+                      requestAnimationFrame(() => {
+                        const richEditor = primaryColumn.querySelector('[contenteditable="true"][role="textbox"], [data-testid="tweetTextarea_0"][contenteditable="true"]');
+                        if (richEditor) richEditor.focus({ preventScroll: true });
+                        markInlineComposers();
+                      });
+                    };
+                    activeOpeners.add(opener);
+                    hasPostButton.dataset.mosaicReplyCovered = 'true';
+                  } else {
+                    if (opener) opener.remove();
+                    delete hasPostButton.dataset.mosaicReplyCovered;
+                  }
                   break;
                 }
                 candidate = candidate.parentElement;
               }
+            });
+            document.querySelectorAll('[data-mosaic-reply-opener="true"]').forEach(opener => {
+              if (!activeOpeners.has(opener)) opener.remove();
             });
           }
 
@@ -1971,6 +2063,11 @@ struct WebColumnView: NSViewRepresentable {
               const shell = findTopTabShell(tabList);
               activeShells.add(shell);
               shell.dataset.mosaicTopTabShell = 'true';
+              // A profile's section rail contains its Replies route. Do not pin
+              // Home, search, notifications, or an opened post's own header.
+              const profileReplies = tabList.querySelector('a[href$="/with_replies"]');
+              if (profileReplies) shell.dataset.mosaicProfileTabs = 'true';
+              else delete shell.dataset.mosaicProfileTabs;
               delete shell.dataset.mosaicNeedsPositioning;
               const shellStyle = typeof getComputedStyle === 'function' ? getComputedStyle(shell) : null;
               shell.dataset.mosaicNeedsPositioning = !shellStyle || shellStyle.position === 'static' ? 'true' : 'false';
@@ -2010,6 +2107,7 @@ struct WebColumnView: NSViewRepresentable {
             document.querySelectorAll('[data-mosaic-top-tab-shell="true"]').forEach(shell => {
               if (activeShells.has(shell)) return;
               delete shell.dataset.mosaicTopTabShell;
+              delete shell.dataset.mosaicProfileTabs;
               delete shell.dataset.mosaicColumnScrolled;
               delete shell.dataset.mosaicColumnMenuVisible;
               delete shell.dataset.mosaicNeedsPositioning;
@@ -2432,7 +2530,12 @@ struct WebColumnView: NSViewRepresentable {
                 markSubscribeButtons();
               });
             });
-            globalThis.__mosaicComposerObserver.observe(document.body, { childList: true, subtree: true });
+            globalThis.__mosaicComposerObserver.observe(document.body, {
+              childList: true,
+              subtree: true,
+              attributes: true,
+              attributeFilter: ['disabled', 'aria-disabled']
+            });
           }
           document.documentElement.dataset.mosaicAppearance = 'integrated';
           return 'mosaic-integrated';
@@ -2469,6 +2572,8 @@ struct WebColumnView: NSViewRepresentable {
             if (handler) handler.postMessage(false);
           } catch (_) {}
           if (typeof document.querySelectorAll === 'function') {
+            document.querySelectorAll('[data-mosaic-reply-opener="true"]').forEach(node => node.remove());
+            document.querySelectorAll('[data-mosaic-reply-covered="true"]').forEach(node => delete node.dataset.mosaicReplyCovered);
             document.querySelectorAll('[data-mosaic-composer="true"]').forEach(node => {
               delete node.dataset.mosaicComposer;
               node.style.removeProperty('--mosaic-post-label-left');
@@ -2487,6 +2592,7 @@ struct WebColumnView: NSViewRepresentable {
             });
             document.querySelectorAll('[data-mosaic-top-tab-shell="true"]').forEach(node => {
               delete node.dataset.mosaicTopTabShell;
+              delete node.dataset.mosaicProfileTabs;
               delete node.dataset.mosaicColumnScrolled;
               delete node.dataset.mosaicColumnMenuVisible;
               delete node.dataset.mosaicNeedsPositioning;
