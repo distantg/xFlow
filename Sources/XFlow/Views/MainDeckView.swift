@@ -186,9 +186,27 @@ struct MainDeckView: View {
             Rectangle()
                 .fill(
                     colorScheme == .dark
-                        ? Color.black.opacity(controlActiveState == .inactive ? 0.1 : 0.045)
-                        : Color.white.opacity(controlActiveState == .inactive ? 0.1 : 0.035)
+                        ? Color(red: 0.07, green: 0.085, blue: 0.105)
+                            .opacity(controlActiveState == .inactive ? 0.12 : 0.065)
+                        : Color(red: 0.96, green: 0.945, blue: 0.91)
+                            .opacity(controlActiveState == .inactive ? 0.12 : 0.07)
                 )
+
+            LinearGradient(
+                colors: colorScheme == .dark
+                    ? [
+                        Color(red: 0.34, green: 0.43, blue: 0.52).opacity(0.07),
+                        Color.clear,
+                        Color(red: 0.45, green: 0.35, blue: 0.25).opacity(0.025)
+                    ]
+                    : [
+                        Color(red: 1.0, green: 0.94, blue: 0.82).opacity(0.09),
+                        Color.clear,
+                        Color(red: 0.73, green: 0.84, blue: 0.9).opacity(0.075)
+                    ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
         }
         .ignoresSafeArea()
     }

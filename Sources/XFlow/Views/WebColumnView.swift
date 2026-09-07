@@ -1189,7 +1189,29 @@ struct WebColumnView: NSViewRepresentable {
             [data-testid="primaryColumn"] article [role="group"] [role="button"]:hover {
               background-color: var(--mosaic-surface-hover) !important;
               box-shadow: 0 5px 14px rgba(0, 0, 0, 0.08) !important;
-              transform: translateY(-1px) !important;
+              transform: none !important;
+            }
+
+            /* X applies small translate/scale changes to the post-header action
+               glyphs on hover. Keep this pair optically fixed while allowing
+               the hover color to respond. */
+            [data-testid="primaryColumn"] button[aria-label*="Grok" i],
+            [data-testid="primaryColumn"] [role="button"][aria-label*="Grok" i],
+            [data-testid="primaryColumn"] [data-testid="caret"] {
+              flex: 0 0 auto !important;
+              transform: none !important;
+              translate: none !important;
+              scale: 1 !important;
+              will-change: auto !important;
+              transition: color 120ms ease-out, background-color 120ms ease-out, filter 120ms ease-out !important;
+            }
+
+            [data-testid="primaryColumn"] button[aria-label*="Grok" i] *,
+            [data-testid="primaryColumn"] [role="button"][aria-label*="Grok" i] *,
+            [data-testid="primaryColumn"] [data-testid="caret"] * {
+              transform: none !important;
+              translate: none !important;
+              scale: 1 !important;
             }
 
             [data-testid="primaryColumn"] [data-testid="card.wrapper"],

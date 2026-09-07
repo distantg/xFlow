@@ -213,6 +213,22 @@ struct ColumnCardView: View {
         .padding(.horizontal, 12)
         .padding(.top, 9)
         .padding(.bottom, 8)
+        .background(columnChromeBand)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(MosaicTheme.hairline(for: colorScheme).opacity(0.38))
+                .frame(height: 0.5)
+        }
+    }
+
+    private var columnChromeBand: some View {
+        LinearGradient(
+            colors: colorScheme == .dark
+                ? [Color.white.opacity(0.036), Color.white.opacity(0.008)]
+                : [Color.white.opacity(0.2), Color.white.opacity(0.055)],
+            startPoint: .top,
+            endPoint: .bottom
+        )
     }
 
     private var menuTriggerIcon: some View {

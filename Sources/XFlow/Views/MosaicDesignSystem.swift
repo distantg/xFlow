@@ -78,10 +78,15 @@ struct MosaicSurface: View {
 
         shape
             .fill(reduceTransparency ? opaqueFill : materialFill)
+            .opacity(reduceTransparency ? 1 : materialOpacity)
             .overlay(shape.fill(surfaceTint))
             .overlay(
                 shape
                     .strokeBorder(borderColor, lineWidth: isSelected ? 1.35 : 0.8)
+            )
+            .overlay(
+                shape
+                    .strokeBorder(rimLight, lineWidth: 0.75)
             )
             .shadow(
                 color: depthShadow,
@@ -120,17 +125,33 @@ struct MosaicSurface: View {
         )
     }
 
+    private var materialOpacity: Double {
+        switch level {
+        case .base:
+            return 1
+        case .tile:
+            return colorScheme == .dark ? 0.76 : 0.62
+        case .raised:
+            return colorScheme == .dark ? 0.84 : 0.74
+        case .overlay:
+            return colorScheme == .dark ? 0.92 : 0.86
+        }
+    }
+
     private var surfaceTint: Color {
         let inactiveMultiplier = controlActiveState == .inactive ? 0.55 : 1.0
         let levelOpacity: Double
         switch level {
-        case .base: levelOpacity = colorScheme == .dark ? 0.008 : 0.018
-        case .tile: levelOpacity = colorScheme == .dark ? 0.018 : 0.035
-        case .raised: levelOpacity = colorScheme == .dark ? 0.032 : 0.055
-        case .overlay: levelOpacity = colorScheme == .dark ? 0.052 : 0.082
+        case .base: levelOpacity = colorScheme == .dark ? 0.026 : 0.022
+        case .tile: levelOpacity = colorScheme == .dark ? 0.038 : 0.065
+        case .raised: levelOpacity = colorScheme == .dark ? 0.056 : 0.086
+        case .overlay: levelOpacity = colorScheme == .dark ? 0.074 : 0.11
         }
         let stateBoost = (isHovering ? 0.026 : 0) + (isSelected ? 0.02 : 0)
-        return Color.white.opacity((levelOpacity + stateBoost) * inactiveMultiplier)
+        let tint = colorScheme == .dark
+            ? Color(red: 0.28, green: 0.33, blue: 0.38)
+            : Color(red: 0.88, green: 0.93, blue: 0.955)
+        return tint.opacity((levelOpacity + stateBoost) * inactiveMultiplier)
     }
 
     private var borderColor: Color {
@@ -140,12 +161,34 @@ struct MosaicSurface: View {
         }
         let opacity: Double
         switch level {
-        case .base: opacity = colorScheme == .dark ? 0.045 : 0.1
-        case .tile: opacity = colorScheme == .dark ? 0.06 : 0.13
-        case .raised: opacity = colorScheme == .dark ? 0.11 : 0.22
-        case .overlay: opacity = colorScheme == .dark ? 0.14 : 0.28
+        case .base: opacity = colorScheme == .dark ? 0.05 : 0.045
+        case .tile: opacity = colorScheme == .dark ? 0.085 : 0.075
+        case .raised: opacity = colorScheme == .dark ? 0.125 : 0.105
+        case .overlay: opacity = colorScheme == .dark ? 0.16 : 0.13
         }
-        return Color.white.opacity(opacity)
+        return colorScheme == .dark
+            ? Color.white.opacity(opacity)
+            : Color.black.opacity(opacity)
+    }
+
+    private var rimLight: LinearGradient {
+        let highlight: Color
+        switch level {
+        case .base:
+            highlight = Color.white.opacity(colorScheme == .dark ? 0.08 : 0.32)
+        case .tile:
+            highlight = Color.white.opacity(colorScheme == .dark ? 0.14 : 0.52)
+        case .raised:
+            highlight = Color.white.opacity(colorScheme == .dark ? 0.18 : 0.6)
+        case .overlay:
+            highlight = Color.white.opacity(colorScheme == .dark ? 0.22 : 0.66)
+        }
+
+        return LinearGradient(
+            colors: [highlight, highlight.opacity(0.34), .clear, .clear],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
     }
 
     private var depthShadow: Color {
@@ -157,17 +200,17 @@ struct MosaicSurface: View {
     private var depthOpacity: Double {
         switch level {
         case .base: return 0
-        case .tile: return colorScheme == .dark ? 0.1 : 0.04
-        case .raised: return colorScheme == .dark ? 0.16 : 0.06
-        case .overlay: return colorScheme == .dark ? 0.24 : 0.09
+        case .tile: return colorScheme == .dark ? 0.12 : 0.07
+        case .raised: return colorScheme == .dark ? 0.18 : 0.09
+        case .overlay: return colorScheme == .dark ? 0.25 : 0.12
         }
     }
 
     private var depthRadius: CGFloat {
         switch level {
         case .base: return 0
-        case .tile: return 8
-        case .raised: return 11
+        case .tile: return 10
+        case .raised: return 13
         case .overlay: return 18
         }
     }
