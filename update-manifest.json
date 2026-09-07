@@ -1,7 +1,7 @@
 {
-  "latestVersion": "1.4.9",
-  "publishedAt": "2026-09-06T10:25:44Z",
-  "downloadURL": "https://github.com/distantg/xFlow/releases/tag/v1.4.9",
-  "releaseNotes": "Reduces memory and background work by parking off-screen columns without reloading their timelines, suspending background media, limiting navigation history, and enforcing a single Mosaic window while keeping notifications and messages active.",
+  "latestVersion": "2.0",
+  "publishedAt": "2026-09-07T11:04:20Z",
+  "downloadURL": "https://github.com/distantg/xFlow/releases/tag/v2.0",
+  "releaseNotes": "Mosaic 2.0 introduces refined glass styling, Mosaic and Dark defaults, improved direct messages and navigation headers, persistent high-resolution account avatars, native image copy/save/share actions, and startup and memory improvements.",
   "minimumSupportedVersion": "1.0"
 }
