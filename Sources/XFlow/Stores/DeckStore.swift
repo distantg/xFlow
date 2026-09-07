@@ -319,10 +319,9 @@ final class DeckStore: ObservableObject {
     }
 
     func captureHandle(for accountID: UUID, from url: URL?) {
-        guard let handle = Self.extractHandle(from: url) else {
-            return
-        }
-        setHandle(accountID: accountID, handle: handle)
+        // Navigation can lead to anyone's profile or post. Verify the viewer
+        // through account controls instead of adopting the visited username.
+        refreshProfileMetadataIfNeeded(for: accountID, force: false)
     }
 
     func captureListMetadata(for columnID: UUID, from url: URL?, pageTitle: String?) {

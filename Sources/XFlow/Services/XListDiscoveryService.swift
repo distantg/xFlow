@@ -42,14 +42,9 @@ final class XListDiscoveryService {
 
     func fetchLists(
         for accountID: UUID,
-        handle: String?,
+        onResolvedHandle: @escaping (String) -> Void,
         completion: @escaping Completion
     ) {
-        guard let indexURL = Self.listsIndexURL(forHandle: handle) else {
-            completion(.failure(.loadFailed))
-            return
-        }
-
         if pendingCallbacks[accountID] != nil {
             pendingCallbacks[accountID, default: []].append(completion)
             return
@@ -57,13 +52,15 @@ final class XListDiscoveryService {
 
         pendingCallbacks[accountID] = [completion]
 
-        WebSessionPool.shared.appearsAuthenticated(accountID: accountID) { [weak self] authenticated in
+        WebSessionPool.shared.fetchProfileMeta(accountID: accountID) { [weak self] meta in
             guard let self, self.pendingCallbacks[accountID] != nil else { return }
-            guard authenticated else {
+            guard let handle = meta?.handle,
+                  let indexURL = Self.listsIndexURL(forHandle: handle) else {
                 self.finish(accountID: accountID, result: .failure(.notAuthenticated))
                 return
             }
 
+            onResolvedHandle(handle)
             let probe = ListProbe(
                 configuration: WebSessionPool.shared.configuration(for: accountID),
                 indexURL: indexURL,

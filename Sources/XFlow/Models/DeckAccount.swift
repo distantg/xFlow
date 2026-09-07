@@ -1,5 +1,6 @@
 import Foundation
 import WebKit
+import AppKit
 
 struct DeckAccount: Identifiable, Codable, Equatable {
     let id: UUID
@@ -200,24 +201,16 @@ final class WebSessionPool {
                 return
             }
 
-            self.fetchProfileMetaFromHTML(accountID: accountID) { [weak self] htmlMeta in
-                guard let self else { return }
-                if let htmlMeta, !htmlMeta.isEmpty {
-                    self.finishProfileMetaFetch(for: accountID, meta: htmlMeta)
-                    return
+            let probe = ProfileMetaProbe(
+                configuration: self.configuration(for: accountID),
+                completion: { [weak self] meta in
+                    guard let self else { return }
+                    self.finishProfileMetaFetch(for: accountID, meta: meta)
                 }
+            )
 
-                let probe = ProfileMetaProbe(
-                    configuration: self.configuration(for: accountID),
-                    completion: { [weak self] meta in
-                        guard let self else { return }
-                        self.finishProfileMetaFetch(for: accountID, meta: meta)
-                    }
-                )
-
-                self.profileProbes[accountID] = probe
-                probe.start()
-            }
+            self.profileProbes[accountID] = probe
+            probe.start()
         }
     }
 
@@ -503,148 +496,27 @@ final class WebSessionPool {
     }
 
     private final class ProfileMetaProbe: NSObject, WKNavigationDelegate {
-        private static let extractionScript = """
-        (function() {
-          const reserved = new Set(['home','notifications','messages','explore','search','i','compose','settings','premium','grok','tos','privacy','about','intent','share']);
+        private static let extractionScript = AccountIdentityScript.extractionScript
 
-          function normalize(path) {
-            if (!path || !path.startsWith('/')) return null;
-            const candidate = path.slice(1).split('/')[0].toLowerCase();
-            if (!candidate || reserved.has(candidate)) return null;
-            if (!/^[a-z0-9_]{1,15}$/.test(candidate)) return null;
-            return candidate;
-          }
-
-          function extractHandleFromText(text) {
-            if (!text) return '';
-            const match = text.match(/@([a-z0-9_]{1,15})/i);
-            return match ? (match[1] || '').toLowerCase() : '';
-          }
-
-          function decodeProfileURL(raw) {
-            if (!raw) return '';
-            return raw
-              .replace(/\\\\u002F/g, '/')
-              .replace(/\\\\\\//g, '/');
-          }
-
-          function collect() {
-            let avatarCandidate = '';
-            let handleCandidate = '';
-
-            const switcher = document.querySelector('button[data-testid="SideNav_AccountSwitcher_Button"], button[aria-label*="@"]');
-            if (switcher) {
-              const switcherHandle = extractHandleFromText(
-                (switcher.innerText || '') + ' ' + (switcher.getAttribute('aria-label') || '')
-              );
-              if (switcherHandle) handleCandidate = switcherHandle;
-              const switcherImg = switcher.querySelector('img');
-              if (switcherImg && switcherImg.src) avatarCandidate = switcherImg.src;
-            }
-
-            if (!avatarCandidate) {
-              const navAvatar = document.querySelector('nav[aria-label="Primary"] img[src*="profile_images"], img[src*="profile_images"]');
-              if (navAvatar && navAvatar.src) avatarCandidate = navAvatar.src;
-            }
-
-            const profileLink = document.querySelector('a[data-testid="AppTabBar_Profile_Link"]');
-            if (profileLink) {
-              const found = normalize(profileLink.getAttribute('href') || '');
-              const profileImage = profileLink.querySelector('img');
-              if (!avatarCandidate && profileImage && profileImage.src) avatarCandidate = profileImage.src;
-              if (found) handleCandidate = found;
-            }
-
-            if (!handleCandidate) {
-              const navLinks = Array.from(document.querySelectorAll('nav a[href^="/"]'));
-              for (const link of navLinks) {
-                const hrefHandle = normalize(link.getAttribute('href') || '');
-                const textHandle = extractHandleFromText(
-                  (link.textContent || '') + ' ' + (link.getAttribute('aria-label') || '')
-                );
-                if (hrefHandle || textHandle) {
-                  handleCandidate = (hrefHandle || textHandle || '').toLowerCase();
-                  const linkImg = link.querySelector('img');
-                  if (!avatarCandidate && linkImg && linkImg.src) avatarCandidate = linkImg.src;
-                  break;
-                }
-              }
-            }
-
-            if (!handleCandidate) {
-              const profileLocation = normalize(window.location.pathname || '');
-              if (profileLocation) handleCandidate = profileLocation;
-            }
-
-            if (!handleCandidate) {
-              const allAnchors = Array.from(document.querySelectorAll('a[href^="/"]'));
-              for (const anchor of allAnchors) {
-                const found = normalize(anchor.getAttribute('href') || '');
-                if (!found) continue;
-                const text = (anchor.textContent || '').trim().toLowerCase();
-                const aria = (anchor.getAttribute('aria-label') || '').trim().toLowerCase();
-                if (text.startsWith('@') || aria.includes('profile')) {
-                  handleCandidate = found;
-                  break;
-                }
-              }
-            }
-
-            if (!handleCandidate) {
-              const fromTitle = extractHandleFromText(document.title || '');
-              if (fromTitle) handleCandidate = fromTitle;
-            }
-
-            if (!avatarCandidate) {
-              const ogImage = document.querySelector('meta[property="og:image"]');
-              if (ogImage && ogImage.content) avatarCandidate = ogImage.content;
-            }
-
-            if (!handleCandidate || !avatarCandidate) {
-              const html = document.documentElement ? (document.documentElement.innerHTML || '') : '';
-              if (!handleCandidate) {
-                const screenMatch = html.match(/"screen_name":"([a-zA-Z0-9_]{1,15})"/);
-                if (screenMatch && screenMatch[1]) {
-                  handleCandidate = screenMatch[1].toLowerCase();
-                }
-              }
-              if (!avatarCandidate) {
-                const avatarMatch = html.match(/"profile_image_url_https":"([^"]+)"/);
-                if (avatarMatch && avatarMatch[1]) {
-                  avatarCandidate = decodeProfileURL(avatarMatch[1]);
-                }
-              }
-            }
-
-            return { handle: handleCandidate || '', avatar: avatarCandidate || '' };
-          }
-
-          return new Promise(function(resolve) {
-            let attempts = 0;
-            function tick() {
-              const result = collect();
-              if (((result.handle && result.handle.length > 0) && (result.avatar && result.avatar.length > 0)) || attempts >= 25) {
-                resolve(JSON.stringify(result));
-                return;
-              }
-              attempts += 1;
-              setTimeout(tick, 120);
-            }
-            tick();
-          });
-        })();
-        """
-
+        private let hostWindow: NSWindow
         private let webView: WKWebView
         private let completion: (AccountProfileMeta?) -> Void
         private var isFinished = false
         private var timeoutWorkItem: DispatchWorkItem?
 
         init(configuration: WKWebViewConfiguration, completion: @escaping (AccountProfileMeta?) -> Void) {
-            self.webView = WKWebView(frame: .zero, configuration: configuration)
+            self.webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 1000, height: 900), configuration: configuration)
+            self.hostWindow = NSWindow(
+                contentRect: CGRect(x: -10_000, y: -10_000, width: 1000, height: 900),
+                styleMask: [.borderless], backing: .buffered, defer: false
+            )
             self.completion = completion
             super.init()
             webView.navigationDelegate = self
+            hostWindow.contentView = webView
+            hostWindow.isReleasedWhenClosed = false
+            hostWindow.ignoresMouseEvents = true
+            hostWindow.collectionBehavior = [.transient, .ignoresCycle]
         }
 
         func start() {
@@ -652,7 +524,8 @@ final class WebSessionPool {
                 self?.finish(with: nil)
             }
             timeoutWorkItem = timeout
-            DispatchQueue.main.asyncAfter(deadline: .now() + 5.5, execute: timeout)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 12, execute: timeout)
+            hostWindow.orderBack(nil)
             webView.load(URLRequest(url: URL(string: "https://x.com/home")!))
         }
 
@@ -712,9 +585,10 @@ final class WebSessionPool {
                 return
             }
 
-            webView.evaluateJavaScript(Self.extractionScript) { [weak self] result, _ in
+            webView.callAsyncJavaScript("return await " + Self.extractionScript, arguments: [:], in: nil, in: .page) { [weak self] result in
                 guard let self else { return }
-                guard let payload = result as? String,
+                guard case .success(let value) = result,
+                      let payload = value as? String,
                       let data = payload.data(using: .utf8),
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                     self.finish(with: nil)
@@ -755,6 +629,8 @@ final class WebSessionPool {
             timeoutWorkItem?.cancel()
             webView.stopLoading()
             webView.navigationDelegate = nil
+            hostWindow.orderOut(nil)
+            hostWindow.contentView = nil
             completion(meta)
         }
     }

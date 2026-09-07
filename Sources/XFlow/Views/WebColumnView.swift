@@ -335,6 +335,7 @@ struct WebColumnView: NSViewRepresentable {
     var isMediaSuspended: Bool = false
     var onInitialContentReady: (() -> Void)? = nil
     var onLaunchSessionResolved: ((Bool) -> Void)? = nil
+    var backNavigationID: UUID? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
@@ -487,6 +488,15 @@ struct WebColumnView: NSViewRepresentable {
         }
         suspendMedia(in: webView, suspended: isMediaSuspended, coordinator: context.coordinator)
 
+        if let backNavigationID, context.coordinator.lastBackNavigationID != backNavigationID {
+            context.coordinator.lastBackNavigationID = backNavigationID
+            if webView.canGoBack {
+                webView.goBack()
+            } else {
+                // A restored column can have a Grok page without retained history.
+                webView.load(URLRequest(url: url))
+            }
+        }
         update(webView: webView, coordinator: context.coordinator)
     }
 
@@ -1913,7 +1923,10 @@ struct WebColumnView: NSViewRepresentable {
               [data-testid="primaryColumn"] * { transition-duration: 0.001ms !important; transition-delay: 0ms !important; }
             }
             \(DirectMessageTheme.css)
+            \(GrokComposerTheme.css)
           `;
+
+          \(GrokComposerTheme.markingScript)
 
           function markInlineComposers() {
             if (typeof document.querySelectorAll !== 'function') return;
@@ -2500,6 +2513,7 @@ struct WebColumnView: NSViewRepresentable {
             globalThis.__mosaicTopTabHandlers = handlers;
           }
 
+          markGrokComposer();
           markInlineComposers();
           markTopTabRails();
           markVideoVolumeControls();
@@ -2521,6 +2535,7 @@ struct WebColumnView: NSViewRepresentable {
               if (globalThis.__mosaicRefreshFrame) return;
               globalThis.__mosaicRefreshFrame = requestAnimationFrame(() => {
                 globalThis.__mosaicRefreshFrame = 0;
+                markGrokComposer();
                 markInlineComposers();
                 markTopTabRails();
                 markVideoVolumeControls();
@@ -2639,6 +2654,7 @@ struct WebColumnView: NSViewRepresentable {
         var refreshKey: String = ""
         var filter: ColumnFilter = .none
         var accountID: UUID?
+        var lastBackNavigationID: UUID?
         var onNavigation: ((URL?) -> Void)?
         var onDetectedHandle: ((String) -> Void)?
         var onDetectedProfileImage: ((URL?) -> Void)?
@@ -2703,6 +2719,14 @@ struct WebColumnView: NSViewRepresentable {
             postURLObservation = webView.observe(\.url, options: [.new]) { [weak self] webView, _ in
                 guard let self else { return }
                 let target = webView.url
+                // X changes routes through history.pushState as well as full loads.
+                DispatchQueue.main.async { [weak self, weak webView] in
+                    guard let webView, webView.url == target else { return }
+                    self?.onNavigation?(target)
+                    if self?.columnAppearanceMode == .mosaicIntegrated {
+                        webView.evaluateJavaScript(GrokComposerTheme.installScript, completionHandler: nil)
+                    }
+                }
                 guard target != self.postRecoveryURL else { return }
                 (webView as? DeckWKWebView)?.resetColumnMenuScrollState(restoringPosition: true)
                 self.postRecoveryWork?.cancel()
@@ -2864,6 +2888,9 @@ struct WebColumnView: NSViewRepresentable {
 
         func applyColumnAppearance(to webView: WKWebView) {
             let mode = columnAppearanceMode
+            if mode == .mosaicIntegrated {
+                webView.evaluateJavaScript(GrokComposerTheme.installScript, completionHandler: nil)
+            }
             webView.evaluateJavaScript(Self.columnAppearanceScript(for: mode)) { [weak self] _, _ in
                 self?.appliedColumnAppearanceMode = mode
             }
@@ -3210,141 +3237,12 @@ struct WebColumnView: NSViewRepresentable {
         }
 
         private func detectProfileMeta(in webView: WKWebView) {
-            let script = """
-            (function() {
-              const reserved = new Set(['home','notifications','messages','explore','search','i','compose','settings','premium','grok','tos','privacy','about','intent','share']);
+            let script = AccountIdentityScript.extractionScript
 
-              function normalize(path) {
-                if (!path || !path.startsWith('/')) return null;
-                const candidate = path.slice(1).split('/')[0].toLowerCase();
-                if (!candidate || reserved.has(candidate)) return null;
-                if (!/^[a-z0-9_]{1,15}$/.test(candidate)) return null;
-                return candidate;
-              }
-
-              function extractHandleFromText(text) {
-                if (!text) return '';
-                const match = text.match(/@([a-z0-9_]{1,15})/i);
-                return match ? (match[1] || '').toLowerCase() : '';
-              }
-
-              function decodeProfileURL(raw) {
-                if (!raw) return '';
-                return raw
-                  .replace(/\\\\u002F/g, '/')
-                  .replace(/\\\\\\//g, '/');
-              }
-
-              function collect() {
-                let avatarCandidate = '';
-                let handleCandidate = '';
-
-                const switcher = document.querySelector('button[data-testid="SideNav_AccountSwitcher_Button"], button[aria-label*="@"]');
-                if (switcher) {
-                  const switcherHandle = extractHandleFromText(
-                    (switcher.innerText || '') + ' ' + (switcher.getAttribute('aria-label') || '')
-                  );
-                  if (switcherHandle) handleCandidate = switcherHandle;
-                  const switcherImg = switcher.querySelector('img');
-                  if (switcherImg && switcherImg.src) avatarCandidate = switcherImg.src;
-                }
-
-                if (!avatarCandidate) {
-                  const navAvatar = document.querySelector('nav[aria-label="Primary"] img[src*="profile_images"], img[src*="profile_images"]');
-                  if (navAvatar && navAvatar.src) avatarCandidate = navAvatar.src;
-                }
-
-                const directProfile = document.querySelector('a[data-testid="AppTabBar_Profile_Link"]');
-                if (directProfile) {
-                  const found = normalize(directProfile.getAttribute('href') || '');
-                  const profileImg = directProfile.querySelector('img');
-                  if (!avatarCandidate && profileImg && profileImg.src) avatarCandidate = profileImg.src;
-                  if (found) handleCandidate = found;
-                }
-
-                if (!handleCandidate) {
-                  const navLinks = Array.from(document.querySelectorAll('nav a[href^="/"]'));
-                  for (const link of navLinks) {
-                    const hrefHandle = normalize(link.getAttribute('href') || '');
-                    const textHandle = extractHandleFromText(
-                      (link.textContent || '') + ' ' + (link.getAttribute('aria-label') || '')
-                    );
-                    if (hrefHandle || textHandle) {
-                      handleCandidate = (hrefHandle || textHandle || '').toLowerCase();
-                      const linkImg = link.querySelector('img');
-                      if (!avatarCandidate && linkImg && linkImg.src) avatarCandidate = linkImg.src;
-                      break;
-                    }
-                  }
-                }
-
-                if (!avatarCandidate) {
-                  const metaAvatar = document.querySelector('meta[property="og:image"]');
-                  if (metaAvatar && metaAvatar.content) avatarCandidate = metaAvatar.content;
-                }
-
-                if (!handleCandidate) {
-                  const locationMatch = normalize(window.location.pathname || '');
-                  if (locationMatch) handleCandidate = locationMatch;
-                }
-
-                if (!handleCandidate) {
-                  const allLinks = Array.from(document.querySelectorAll('a[href^="/"]'));
-                  for (const link of allLinks) {
-                    const found = normalize(link.getAttribute('href') || '');
-                    if (!found) continue;
-                    const text = (link.textContent || '').trim().toLowerCase();
-                    const aria = (link.getAttribute('aria-label') || '').trim().toLowerCase();
-                    if (text.startsWith('@') || aria.includes('profile')) {
-                      handleCandidate = found;
-                      break;
-                    }
-                  }
-                }
-
-                if (!handleCandidate) {
-                  const fromTitle = extractHandleFromText(document.title || '');
-                  if (fromTitle) handleCandidate = fromTitle;
-                }
-
-                if (!handleCandidate || !avatarCandidate) {
-                  const html = document.documentElement ? (document.documentElement.innerHTML || '') : '';
-                  if (!handleCandidate) {
-                    const screenMatch = html.match(/"screen_name":"([a-zA-Z0-9_]{1,15})"/);
-                    if (screenMatch && screenMatch[1]) {
-                      handleCandidate = screenMatch[1].toLowerCase();
-                    }
-                  }
-                  if (!avatarCandidate) {
-                    const avatarMatch = html.match(/"profile_image_url_https":"([^"]+)"/);
-                    if (avatarMatch && avatarMatch[1]) {
-                      avatarCandidate = decodeProfileURL(avatarMatch[1]);
-                    }
-                  }
-                }
-
-                return { handle: handleCandidate || '', avatar: avatarCandidate || '' };
-              }
-
-              return new Promise(function(resolve) {
-                let attempts = 0;
-                function tick() {
-                  const result = collect();
-                  if (((result.handle && result.handle.length > 0) && (result.avatar && result.avatar.length > 0)) || attempts >= 18) {
-                    resolve(JSON.stringify(result));
-                    return;
-                  }
-                  attempts += 1;
-                  setTimeout(tick, 120);
-                }
-                tick();
-              });
-            })();
-            """
-
-            webView.evaluateJavaScript(script) { [weak self] result, _ in
+            webView.callAsyncJavaScript("return await " + script, arguments: [:], in: nil, in: .page) { [weak self] result in
                 guard let self,
-                      let payload = result as? String,
+                      case .success(let value) = result,
+                      let payload = value as? String,
                       let data = payload.data(using: .utf8),
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                     return

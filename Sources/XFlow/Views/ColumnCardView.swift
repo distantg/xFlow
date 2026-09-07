@@ -56,6 +56,8 @@ struct ColumnCardView: View {
     var notificationNavigationURL: URL? = nil
     var onInitialContentReady: (() -> Void)? = nil
 
+    @State private var currentPageURL: URL?
+    @State private var backNavigationID: UUID?
     @State private var localRefreshSignal = UUID()
     @State private var isHoveringHandle = false
     @State private var isHoveringColumn = false
@@ -75,7 +77,10 @@ struct ColumnCardView: View {
                 accountID: activeAccountID,
                 filter: column.filter,
                 columnAppearanceMode: columnAppearanceMode,
-                onNavigation: onNavigation,
+                onNavigation: { url in
+                    currentPageURL = url
+                    onNavigation(url)
+                },
                 onDetectedHandle: onDetectedHandle,
                 onDetectedProfileImage: onDetectedProfileImage,
                 onPageTitle: onPageTitle,
@@ -85,7 +90,8 @@ struct ColumnCardView: View {
                 enableAccountTextHandleDetection: column.type == .notifications,
                 isLive: isWebViewLive,
                 isMediaSuspended: isMediaSuspended,
-                onInitialContentReady: onInitialContentReady
+                onInitialContentReady: onInitialContentReady,
+                backNavigationID: backNavigationID
             )
             .id("\(column.id.uuidString)-\(activeAccountID.uuidString)")
             .clipShape(BottomRoundedRectangle(radius: 13))
@@ -107,6 +113,21 @@ struct ColumnCardView: View {
 
     private var header: some View {
         HStack(alignment: .center, spacing: 8) {
+            if let currentPageURL,
+               currentPageURL.path == "/i/grok" || currentPageURL.path.hasPrefix("/i/grok/") {
+                Button {
+                    backNavigationID = UUID()
+                } label: {
+                    Image(systemName: "arrow.left")
+                        .font(.system(size: 14, weight: .semibold))
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(labelColor)
+                .help("Back (⌘←)")
+                .accessibilityLabel("Back from Grok")
+            }
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(column.title)
                     .font(.system(size: 13, weight: .bold, design: .rounded))
@@ -385,31 +406,88 @@ private struct ColumnReorderDragCapture: NSViewRepresentable {
         var onChange: ((CGFloat) -> Void)?
         var onEnd: (() -> Void)?
         private var startX: CGFloat?
+        private weak var deckScrollView: NSScrollView?
+        private var startScrollX: CGFloat = 0
+        private var scrollTimer: Timer?
+        private var lastScrollTime: TimeInterval = 0
         override var mouseDownCanMoveWindow: Bool { false }
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
         override func mouseDown(with event: NSEvent) {
+            stopDrag()
             startX = NSEvent.mouseLocation.x
+            deckScrollView = enclosingScrollView
+            startScrollX = deckScrollView?.contentView.bounds.minX ?? 0
             onStart?()
+            lastScrollTime = ProcessInfo.processInfo.systemUptime
+            let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+                self?.autoScroll()
+            }
+            scrollTimer = timer
+            // Keep ticking while AppKit is tracking a held mouse, even when it stops moving.
+            RunLoop.main.add(timer, forMode: .common)
         }
 
         override func mouseDragged(with event: NSEvent) {
+            reportTranslation()
+        }
+
+        private func reportTranslation() {
             guard let startX else { return }
-            onChange?(NSEvent.mouseLocation.x - startX)
+            let scrollDelta = (deckScrollView?.contentView.bounds.minX ?? startScrollX) - startScrollX
+            onChange?(NSEvent.mouseLocation.x - startX + scrollDelta)
+        }
+
+        private func autoScroll() {
+            guard startX != nil else { return }
+            guard NSEvent.pressedMouseButtons & 1 != 0, window?.isKeyWindow == true else {
+                stopDrag()
+                return
+            }
+            let now = ProcessInfo.processInfo.systemUptime
+            let elapsed = now - lastScrollTime
+            lastScrollTime = now
+            guard let scrollView = deckScrollView, let document = scrollView.documentView,
+                  let window else { return }
+            let clip = scrollView.contentView
+            let pointer = clip.convert(window.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil)
+            let velocity = ColumnDragAutoScroll.velocity(
+                pointerX: pointer.x - clip.bounds.minX,
+                viewportWidth: clip.bounds.width
+            )
+            let minimum = document.frame.minX
+            let maximum = max(minimum, document.frame.maxX - clip.bounds.width)
+            let nextX = ColumnDragAutoScroll.offset(
+                current: clip.bounds.minX, velocity: velocity, elapsed: elapsed,
+                minimum: minimum, maximum: maximum
+            )
+            guard nextX != clip.bounds.minX else { return }
+            clip.scroll(to: NSPoint(x: nextX, y: clip.bounds.minY))
+            scrollView.reflectScrolledClipView(clip)
+            // Compensate for deck movement so the held column stays beneath the pointer
+            // and target selection can advance to columns beyond the original viewport.
+            reportTranslation()
         }
 
         override func mouseUp(with event: NSEvent) {
+            reportTranslation()
+            stopDrag()
+        }
+
+        private func stopDrag() {
+            scrollTimer?.invalidate()
+            scrollTimer = nil
             guard startX != nil else { return }
             startX = nil
+            deckScrollView = nil
             onEnd?()
         }
 
         override func viewWillMove(toWindow newWindow: NSWindow?) {
-            if newWindow == nil, startX != nil {
-                startX = nil
-                onEnd?()
-            }
+            if newWindow == nil { stopDrag() }
             super.viewWillMove(toWindow: newWindow)
         }
+
+        deinit { scrollTimer?.invalidate() }
     }
 }

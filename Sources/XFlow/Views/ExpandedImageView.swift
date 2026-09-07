@@ -25,26 +25,67 @@ struct ExpandedImagePayload {
 struct ExpandedImageView: NSViewRepresentable {
     let payload: ExpandedImagePayload
 
-    func makeNSView(context: Context) -> ImageActionView {
-        let view = ImageActionView()
-        view.imageScaling = .scaleProportionallyUpOrDown
-        view.imageAlignment = .alignCenter
-        view.animates = true
-        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        view.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
-        view.setAccessibilityLabel("Expanded image")
-        return view
+    func makeNSView(context: Context) -> ZoomableImageScrollView {
+        ZoomableImageScrollView()
     }
 
-    func updateNSView(_ view: ImageActionView, context: Context) {
-        view.payload = payload
-        view.image = payload.image
+    func updateNSView(_ view: ZoomableImageScrollView, context: Context) {
+        if view.imageView.payload?.image !== payload.image {
+            view.magnification = 1
+        }
+        view.imageView.payload = payload
+        view.imageView.image = payload.image
+    }
+}
+
+/// Native magnification keeps the pinch centered under the trackpad gesture
+/// and provides two-finger panning without scaling the lightbox controls.
+final class ZoomableImageScrollView: NSScrollView {
+    let imageView = ImageActionView()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        drawsBackground = false
+        borderType = .noBorder
+        hasHorizontalScroller = false
+        hasVerticalScroller = false
+        horizontalScrollElasticity = .none
+        verticalScrollElasticity = .none
+        allowsMagnification = true
+        minMagnification = 1
+        maxMagnification = 8
+        imageView.imageScaling = .scaleProportionallyUpOrDown
+        imageView.imageAlignment = .alignCenter
+        imageView.animates = true
+        imageView.setAccessibilityLabel("Expanded image")
+        imageView.setAccessibilityHelp("Pinch to zoom. Scroll with two fingers to pan. Double-click to fit.")
+        documentView = imageView
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func layout() {
+        super.layout()
+        // Use the physical viewport, not its magnified bounds, so fitting does
+        // not shrink the document again as the user zooms in.
+        let size = contentView.frame.size
+        if imageView.frame.size != size {
+            imageView.setFrameSize(size)
+        }
     }
 }
 
 final class ImageActionView: NSImageView {
     var payload: ExpandedImagePayload?
     private var sharingPicker: NSSharingServicePicker?
+
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 2, let scrollView = enclosingScrollView {
+            scrollView.setMagnification(1, centeredAt: NSPoint(x: bounds.midX, y: bounds.midY))
+            return
+        }
+        super.mouseDown(with: event)
+    }
 
     override func menu(for event: NSEvent) -> NSMenu? {
         guard payload != nil else { return nil }

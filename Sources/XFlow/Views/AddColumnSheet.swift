@@ -12,6 +12,7 @@ struct AddColumnSheet: View {
     @State private var excludeKeywords = ""
     @State private var hideReplies = false
     @State private var hideReposts = false
+    @State private var resolvedListHandle: String?
     @State private var availableLists: [XListChoice] = []
     @State private var selectedListURL = ""
     @State private var isLoadingLists = false
@@ -267,7 +268,7 @@ struct AddColumnSheet: View {
     }
 
     private var activeAccountLabel: String {
-        store.activeAccount?.name ?? "the active account"
+        resolvedListHandle.map { "@\($0)" } ?? "your signed-in X account"
     }
 
     private func resetParameterForTypeChange() {
@@ -288,6 +289,7 @@ struct AddColumnSheet: View {
         }
         listRequestToken = UUID()
         listLoadAccountID = nil
+        resolvedListHandle = nil
         availableLists = []
         selectedListURL = ""
         isLoadingLists = false
@@ -320,7 +322,11 @@ struct AddColumnSheet: View {
 
         XListDiscoveryService.shared.fetchLists(
             for: accountID,
-            handle: store.activeAccount?.handle
+            onResolvedHandle: { handle in
+                guard listRequestToken == token, store.activeAccountID == accountID else { return }
+                resolvedListHandle = handle
+                store.setHandle(accountID: accountID, handle: handle)
+            }
         ) { result in
             guard listRequestToken == token,
                   store.activeAccountID == accountID,
