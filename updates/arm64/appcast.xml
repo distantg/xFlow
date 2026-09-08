@@ -4,21 +4,20 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Mosaic</title>
         <item>
-            <title>2.1</title>
-            <pubDate>Mon, 07 Sep 2026 15:17:12 -0700</pubDate>
+            <title>2.1.1</title>
+            <pubDate>Mon, 07 Sep 2026 18:35:38 -0700</pubDate>
             <link>https://github.com/distantg/xFlow/releases</link>
-            <sparkle:version>171</sparkle:version>
-            <sparkle:shortVersionString>2.1</sparkle:shortVersionString>
+            <sparkle:version>187</sparkle:version>
+            <sparkle:shortVersionString>2.1.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description><![CDATA[<h2>Mosaic 2.1</h2>
-<p>Mosaic can now download and install updates automatically when you quit. Enable automatic updates in Settings, or choose Check for Updates to install and relaunch immediately.</p>
-<p>This release requires one manual installation for users upgrading from Mosaic 2.0.2 or earlier. Accounts, sessions, layouts, and preferences are preserved.</p>
+            <description><![CDATA[<h2>Mosaic 2.1.1</h2>
+<p>General bug fixes.</p>
 ]]></description>
-            <enclosure url="https://github.com/distantg/xFlow/releases/download/v2.1/Mosaic-2.1-171-arm64.zip" length="8721133" type="application/octet-stream" sparkle:edSignature="EN1mE4CimhK6MhqsDu2imVK0WvuBH6YdbFmV/+EVlnaxC3AN1M8w/gvDlqx7kUZU7juLlFMEc8t7B2STQCgVCA=="></enclosure>
+            <enclosure url="https://github.com/distantg/xFlow/releases/download/v2.1.1/Mosaic-2.1.1-187-arm64.zip" length="8748355" type="application/octet-stream" sparkle:edSignature="2uBgwC+5WPz/GP+muZQeaEvXeaMihXcSlC+MsDXE2MjraC2/dIPtss6JGvEKZGu6BHxUQm6wPU34f40AT3nCCA=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: M9DGxO/VZq4U+8V6olyc+OalD9JC9QT4kGrV6HicAKtTU6U5cUnHxJRxckoATzCAG/mt9ZJfYV7ABlAr/GUPAw==
-length: 1603
+edSignature: LFrJ8spKwphs4aAiI1OcM7rXxPUkwQGki7zhuwG/9vxpkdCCyaiKlX78+D1epoqosn4CnZfce4hq4Ane2b+RBg==
+length: 1293
 -->
