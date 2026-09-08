@@ -13,6 +13,14 @@ enum TrustedURLPolicy {
         return xWebHosts.contains(host)
     }
 
+    /// Redirects used by Grok's embedded sign-in and image tools. This is
+    /// deliberately separate from the origins trusted by X's native bridges.
+    static func isTrustedComposerToolPage(_ url: URL) -> Bool {
+        if isTrustedXPage(url) { return true }
+        guard isHTTPSURLWithoutCredentials(url), let host = normalizedHost(of: url) else { return false }
+        return host == "grok.com" || host.hasSuffix(".grok.com") || host == "accounts.x.ai"
+    }
+
     static func isTrustedXOrigin(scheme: String, host: String, port: Int) -> Bool {
         guard scheme.lowercased() == "https",
               xWebHosts.contains(host.lowercased()) else {

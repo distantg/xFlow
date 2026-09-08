@@ -105,12 +105,12 @@ final class ColumnAppearanceTests: XCTestCase {
     func testClosingDialogDoesNotPromoteTimelineComposer() throws {
         let context = try XCTUnwrap(JSContext())
         context.evaluateScript("""
-        var events = [], timers = [], update, dialogOpen = true;
+        var events = [], timers = [], update, dialogOpen = false;
         var window = { webkit: { messageHandlers: {
           xflowComposerPresentation: { postMessage: p => events.push(p.event) }
         } } };
         var location = { pathname: '/compose/post' };
-        var dialog = { dataset: {}, isConnected: true };
+        var dialog = { dataset: {}, isConnected: true, querySelectorAll: () => [] };
         var inline = { dataset: {}, parentElement: null,
           querySelector: () => ({}) };
         var timelineEditor = { parentElement: inline, closest: () => null };
@@ -119,6 +119,8 @@ final class ColumnAppearanceTests: XCTestCase {
           head: { appendChild: () => {} }, documentElement: {},
           addEventListener: () => {},
           createElement: () => ({}),
+          getElementById: () => null,
+          querySelector: () => dialogOpen ? dialog : null,
           querySelectorAll: selector => selector.includes('tweetTextarea')
             ? (dialogOpen ? [timelineEditor, modalEditor] : [timelineEditor])
             : [dialog, inline].filter(n => n.dataset.mosaicComposeDialog === 'true')
@@ -130,6 +132,8 @@ final class ColumnAppearanceTests: XCTestCase {
         """)
         context.evaluateScript(WebColumnView.Coordinator.composerPresentationScript)
         XCTAssertNil(context.exception)
+        XCTAssertEqual(context.evaluateScript("events.join(',')")?.toString(), "")
+        context.evaluateScript("dialogOpen = true; update();")
         XCTAssertEqual(context.evaluateScript("events.join(',')")?.toString(), "ready")
         XCTAssertEqual(context.evaluateScript("dialog.dataset.mosaicComposeDialog")?.toString(), "true")
         context.evaluateScript("""
@@ -137,7 +141,7 @@ final class ColumnAppearanceTests: XCTestCase {
         update();
         """)
         XCTAssertNil(context.exception)
-        XCTAssertEqual(context.evaluateScript("events.join(',')")?.toString(), "ready,dismissed")
+        XCTAssertEqual(context.evaluateScript("events.join(',')")?.toString(), "ready")
         context.evaluateScript("timers.splice(0).forEach(f => f()); update();")
         XCTAssertEqual(context.evaluateScript("events.join(',')")?.toString(), "ready,dismissed")
         XCTAssertTrue(context.evaluateScript("inline.dataset.mosaicComposeDialog === undefined")?.toBool() == true)

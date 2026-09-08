@@ -27,8 +27,8 @@ BASE_ENTITLEMENTS_FILE="$ROOT_DIR/Config/xFlow.entitlements"
 CONTAINER_MIGRATION_FILE="$ROOT_DIR/Resources/container-migration.plist"
 CODESIGN_IDENTITY="${XFLOW_CODESIGN_IDENTITY:-"-"}"
 APS_ENVIRONMENT="${XFLOW_APS_ENVIRONMENT:-development}"
-APP_VERSION="${XFLOW_VERSION:-2.1}"
-APP_BUILD="${XFLOW_BUILD_NUMBER:-171}"
+APP_VERSION="${XFLOW_VERSION:-2.1.1}"
+APP_BUILD="${XFLOW_BUILD_NUMBER:-187}"
 FEED_URL="${XFLOW_UPDATE_FEED_URL:-https://raw.githubusercontent.com/distantg/xFlow/main/updates/${TARGET_ARCH}/appcast.xml}"
 PUBLIC_KEY="$(cat "$ROOT_DIR/Config/SparklePublicKey.txt")"
 # Test feeds are permitted only in an explicitly isolated bundle.
@@ -111,6 +111,10 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
     <string>AppIcon</string>
     <key>CFBundleShortVersionString</key>
     <string>${APP_VERSION}</string>
+    <key>NSLocationUsageDescription</key>
+    <string>Mosaic uses your location when you choose to add a location to a post.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Mosaic uses your location when you choose to add a location to a post.</string>
     <key>CFBundleVersion</key>
     <string>${APP_BUILD}</string>
     <key>SUFeedURL</key>

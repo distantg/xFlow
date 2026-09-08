@@ -1,8 +1,7 @@
 import SwiftUI
 
 struct ComposerSheetView: View {
-    @EnvironmentObject private var store: DeckStore
-
+    @State private var showsLocationAccess = false
     let account: DeckAccount
     let onReady: () -> Void
     let onDismiss: () -> Void
@@ -13,24 +12,20 @@ struct ComposerSheetView: View {
             refreshKey: "compose-\(account.id.uuidString)",
             accountID: account.id,
             filter: .none,
-            columnAppearanceMode: store.columnAppearanceMode,
-            onNavigation: handleNavigation,
+            // The composer has its own curated theme. Timeline transforms and
+            // header/toolbar marking must not run inside its nested forms.
+            columnAppearanceMode: .originalX,
             onComposerPresentationReady: onReady,
             onComposerDismissed: onDismiss,
+            onLocationRequested: { showsLocationAccess = true },
             enableChromeStripping: false,
             enableMediaCapture: false,
             enableHandleDetection: false,
             routeHorizontalScrollToParent: false
         )
         .id("compose-\(account.id.uuidString)")
-        .frame(width: 980, height: 640)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityLabel("Compose post")
-    }
-
-    private func handleNavigation(_ url: URL?) {
-        guard let url,
-              url.host?.lowercased() == "x.com",
-              !url.path.hasPrefix("/compose/post") else { return }
-        onDismiss()
+        .sheet(isPresented: $showsLocationAccess) { LocationAccessView() }
     }
 }

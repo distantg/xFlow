@@ -324,6 +324,7 @@ struct WebColumnView: NSViewRepresentable {
     var onUnreadNotificationCountChanged: ((Int, NotificationActivity?) -> Void)? = nil
     var onComposerPresentationReady: (() -> Void)? = nil
     var onComposerDismissed: (() -> Void)? = nil
+    var onLocationRequested: (() -> Void)? = nil
     var enableChromeStripping: Bool = true
     var enableMediaCapture: Bool = true
     var enableHandleDetection: Bool = true
@@ -511,6 +512,7 @@ struct WebColumnView: NSViewRepresentable {
         coordinator.onUnreadNotificationCountChanged = onUnreadNotificationCountChanged
         coordinator.onComposerPresentationReady = onComposerPresentationReady
         coordinator.onComposerDismissed = onComposerDismissed
+        coordinator.onLocationRequested = onLocationRequested
         coordinator.columnAppearanceMode = columnAppearanceMode
         coordinator.enableHandleDetection = enableHandleDetection
         coordinator.enableAccountTextHandleDetection = enableAccountTextHandleDetection
@@ -639,27 +641,130 @@ struct WebColumnView: NSViewRepresentable {
               visibility: hidden !important;
             }
 
+            #layers,
+            #layers *,
             [data-mosaic-compose-dialog="true"],
-            [data-mosaic-compose-dialog="true"] * {
+            [data-mosaic-compose-dialog="true"] *,
+            [data-testid="Dropdown"],
+            [data-testid="Dropdown"] *,
+            [data-testid="emojiPicker"],
+            [data-testid="emojiPicker"] *,
+            [role="tooltip"],
+            [role="tooltip"] *,
+            [data-testid="sheetDialog"],
+            [data-testid="sheetDialog"] *,
+            [role="dialog"],
+            [role="dialog"] *,
+            [role="menu"],
+            [role="menu"] *,
+            [role="listbox"],
+            [role="listbox"] * {
               visibility: visible !important;
             }
 
-            [data-mosaic-compose-dialog="true"][data-mosaic-compose-mode="inline"] {
-              position: fixed !important;
-              top: 50% !important;
-              left: 50% !important;
-              width: min(760px, calc(100vw - 32px)) !important;
-              max-width: 760px !important;
-              transform: translate(-50%, -50%) !important;
+            #layers, #layers [data-testid="mask"], #layers [data-mosaic-compose-backdrop="true"] {
+              background-color: transparent !important;
+              box-shadow: none !important;
             }
+
+            :root {
+              --mosaic-compose-panel: rgb(30, 30, 28);
+              --mosaic-compose-ink: rgb(242, 240, 234);
+              --mosaic-compose-edge: rgba(231, 216, 190, 0.18);
+              --mosaic-compose-accent: rgb(231, 216, 190);
+            }
+
+            @media (prefers-color-scheme: light) {
+              :root {
+                --mosaic-compose-panel: rgb(247, 245, 239);
+                --mosaic-compose-ink: rgb(38, 35, 30);
+                --mosaic-compose-edge: rgba(113, 94, 65, 0.2);
+                --mosaic-compose-accent: rgb(113, 94, 65);
+              }
+            }
+
+            [role="dialog"], [data-testid="sheetDialog"],
+            [role="menu"], [role="listbox"],
+            [data-testid="Dropdown"], [data-testid="emojiPicker"] {
+              background-color: var(--mosaic-compose-panel) !important;
+              color: var(--mosaic-compose-ink) !important;
+              border: 1px solid var(--mosaic-compose-edge) !important;
+              border-radius: 22px !important;
+              box-shadow: 0 18px 60px rgba(0, 0, 0, 0.28) !important;
+              font-family: -apple-system, BlinkMacSystemFont, sans-serif !important;
+            }
+
+            [data-mosaic-compose-surface="true"] {
+              background-color: var(--mosaic-compose-panel) !important;
+            }
+
+            [role="dialog"]:has([role="dialog"]) {
+              background-color: transparent !important;
+              border-color: transparent !important;
+              box-shadow: none !important;
+            }
+
+            [role="dialog"] :is(button, [role="button"]) {
+              background-color: var(--mosaic-compose-panel) !important;
+              color: var(--mosaic-compose-accent) !important;
+            }
+            [role="dialog"] :is(button, [role="button"]) :is(div, span, svg) {
+              color: inherit !important;
+            }
+
+            /* Preserve a readable primary action in both enabled and disabled
+               states, independent of X's nested text colors and opacity. */
+            [role="dialog"] [data-testid="tweetButton"] {
+              background-color: rgb(231, 216, 190) !important;
+              color: rgb(34, 28, 21) !important;
+              opacity: 1 !important;
+            }
+            [role="dialog"] [data-testid="tweetButton"] :is(div, span) {
+              color: rgb(34, 28, 21) !important;
+              -webkit-text-fill-color: rgb(34, 28, 21) !important;
+              opacity: 1 !important;
+            }
+            [role="dialog"] [data-testid="tweetButton"]:is(:disabled, [aria-disabled="true"]) {
+              background-color: rgb(151, 143, 130) !important;
+              cursor: default !important;
+            }
+            [role="dialog"] [data-testid="tweetButton"]:not(:disabled):not([aria-disabled="true"]):hover {
+              background-color: rgb(240, 228, 207) !important;
+            }
+
+            [role="dialog"], [data-testid="sheetDialog"] {
+              box-sizing: border-box !important;
+              max-width: calc(100vw - 24px) !important;
+              max-height: calc(100dvh - 24px) !important;
+              overscroll-behavior: contain;
+            }
+            /* X owns the inner flex/scroll layout. Keep the schedule form usable without forcing smaller sheets
+               such as content disclosure to fill the window. */
+            [role="dialog"]:has(select), [role="dialog"]:has(input[type="date"]) {
+              min-height: min(600px, calc(100dvh - 24px)) !important;
+            }
+            [role="dialog"]:has([role="progressbar"]):not(:has([role="textbox"])) {
+              min-height: min(160px, calc(100dvh - 24px)) !important;
+            }
+
+            [role="dialog"] [data-testid="toolBar"] button,
+            [role="dialog"] [data-testid="toolBar"] [role="button"] {
+              color: var(--mosaic-compose-accent) !important;
+            }
+
+            [role="dialog"] :is(button, [role="button"], input, textarea):focus-visible,
+            [role="menu"] :is(button, [role="menuitem"]):focus-visible {
+              outline: 2px solid var(--mosaic-compose-accent) !important;
+              outline-offset: 2px;
+            }
+
           `;
           (document.head || document.documentElement).appendChild(style);
 
-          const installedAt = Date.now();
           let hasSeenComposer = false;
-          let hasSeenDialog = false;
           let hasReportedReady = false;
           let hasReportedDismissal = false;
+          let dismissalTimer = null;
 
           function send(event) {
             try {
@@ -670,33 +775,6 @@ struct WebColumnView: NSViewRepresentable {
             } catch (_) {}
           }
 
-          function inlineComposer(editor) {
-            const primaryColumn = editor.closest('[data-testid="primaryColumn"]');
-            let candidate = editor.parentElement;
-            while (candidate && candidate !== primaryColumn) {
-              const hasPostButton = candidate.querySelector(
-                '[data-testid="tweetButton"], [data-testid="tweetButtonInline"]'
-              );
-              const hasMediaControls = candidate.querySelector(
-                '[data-testid="fileInput"], [data-testid="gifSearchButton"], [aria-label*="media" i]'
-              );
-              if (hasPostButton && hasMediaControls) {
-                let composer = candidate;
-                let ancestor = candidate.parentElement;
-                for (let level = 0; ancestor && ancestor !== primaryColumn && level < 4; level += 1) {
-                  if (ancestor.querySelector('a[href] img')) {
-                    composer = ancestor;
-                    break;
-                  }
-                  ancestor = ancestor.parentElement;
-                }
-                return composer;
-              }
-              candidate = candidate.parentElement;
-            }
-            return null;
-          }
-
           function composerSurface() {
             const editors = Array.from(document.querySelectorAll(
               '[data-testid="tweetTextarea_0"], [contenteditable="true"][role="textbox"]'
@@ -705,39 +783,91 @@ struct WebColumnView: NSViewRepresentable {
               const dialog = editor.closest('[role="dialog"], [data-testid="sheetDialog"]');
               if (dialog) return { node: dialog, mode: 'dialog' };
             }
-            // Closing X's dialog exposes the timeline editor. It must never
-            // become a replacement overlay or keep the native blur alive.
-            if (hasSeenDialog || !location.pathname.startsWith('/compose/post')) return null;
-            const editor = editors[0];
-            if (!editor) return null;
-            if (Date.now() - installedAt < 900) return null;
-            const inline = inlineComposer(editor);
-            return inline ? { node: inline, mode: 'inline' } : null;
+            // The timeline editor is present while X loads the real composer.
+            // Never promote it into the modal, even on a compose route.
+            return null;
           }
 
-          function reportReadyAfterPaint(dialog) {
-            if (hasReportedReady) return;
+          function reportReady(dialog) {
+            if (hasReportedReady || !dialog.isConnected) return;
+            // This WKWebView is preloaded at zero opacity. WebKit can defer
+            // animation frames until it is visible, so readiness cannot wait
+            // for a paint that itself depends on the native ready callback.
             hasReportedReady = true;
-            requestAnimationFrame(function() {
-              requestAnimationFrame(function() {
-                if (dialog.isConnected) send('ready');
-              });
-            });
+            send('ready');
           }
 
           function updatePresentation() {
             if (hasReportedDismissal) return;
+            const layers = document.querySelector('#layers');
+            if (layers) layers.querySelectorAll('div').forEach(function(node) {
+              // Recolor neutral panel surfaces, leaving switch tracks, selected
+              // states and media backgrounds intact.
+              if (!node.closest('button, [role="button"], [role="switch"], [role="checkbox"]') &&
+                  !node.querySelector('input, [role="switch"], [role="checkbox"]')) {
+                const background = getComputedStyle(node).backgroundColor;
+                if (['rgb(0, 0, 0)', 'rgb(255, 255, 255)', 'rgb(21, 32, 43)', 'rgb(22, 24, 28)', 'rgb(18, 18, 18)'].includes(background)) {
+                  node.dataset.mosaicComposeSurface = 'true';
+                }
+              }
+              if (node.closest('[role="dialog"], [data-testid="sheetDialog"], [role="menu"], [role="listbox"]')) return;
+              const rect = node.getBoundingClientRect();
+              if (rect.width >= innerWidth - 2 && rect.height >= innerHeight - 2) {
+                node.dataset.mosaicComposeBackdrop = 'true';
+              }
+            });
             const surface = composerSurface();
-            if (surface) {
+            // X mounts pickers and confirmation sheets in sibling portals,
+            // sometimes replacing the editor entirely while navigating.
+            const nestedDialog = document.querySelector('[role="dialog"], [data-testid="sheetDialog"], [role="menu"], [role="listbox"], [data-testid="Dropdown"], [data-testid="emojiPicker"]');
+            if (surface || (hasSeenComposer && nestedDialog)) {
+              clearTimeout(dismissalTimer);
+              dismissalTimer = null;
+              if (!surface) return;
               const dialog = surface.node;
               hasSeenComposer = true;
-              if (surface.mode === 'dialog') hasSeenDialog = true;
               document.querySelectorAll('[data-mosaic-compose-dialog="true"]').forEach(function(node) {
                 if (node !== dialog) delete node.dataset.mosaicComposeDialog;
               });
               dialog.dataset.mosaicComposeDialog = 'true';
               dialog.dataset.mosaicComposeMode = surface.mode;
-              reportReadyAfterPaint(dialog);
+              // These are action buttons, not selectable tabs. The tab-list
+              // role causes WebKit accessibility to flatten them into one item.
+              dialog.querySelectorAll('[role="tablist"]').forEach(function(toolbar) {
+                if (!toolbar.querySelector('[data-testid="fileInput"], [data-testid="gifSearchButton"]')) return;
+                toolbar.setAttribute('role', 'toolbar');
+                toolbar.setAttribute('aria-label', 'Post tools');
+              });
+              // X disables this control until account-level location tagging is
+              // enabled. Offer real macOS permission/help instead of a dead button.
+              dialog.querySelectorAll('[data-testid="geoButton"], button[aria-label="Tag location"]').forEach(function(button) {
+                const disabled = button.disabled || button.getAttribute('aria-disabled') === 'true';
+                let access = button.parentElement.querySelector('[data-mosaic-location-access="true"]');
+                if (!disabled) {
+                  if (access) access.remove();
+                  button.style.removeProperty('display');
+                  return;
+                }
+                button.style.display = 'none';
+                if (access) return;
+                access = button.cloneNode(true);
+                access.removeAttribute('id');
+                access.removeAttribute('data-testid');
+                access.removeAttribute('disabled');
+                access.removeAttribute('aria-disabled');
+                access.dataset.mosaicLocationAccess = 'true';
+                access.style.removeProperty('display');
+                access.style.opacity = '1';
+                access.style.pointerEvents = 'auto';
+                access.style.cursor = 'pointer';
+                access.setAttribute('aria-label', 'Location access');
+                access.setAttribute('title', 'Enable location access');
+                access.addEventListener('click', function(event) {
+                  if (event.isTrusted) send('locationAccess');
+                });
+                button.after(access);
+              });
+              reportReady(dialog);
               return;
             }
 
@@ -746,32 +876,22 @@ struct WebColumnView: NSViewRepresentable {
               delete node.dataset.mosaicComposeMode;
             });
             if (!hasSeenComposer || hasReportedDismissal) return;
-            // Start the native blur fade in the same mutation cycle as X
-            // removes the dialog, without a separate dismissal debounce.
-            hasReportedDismissal = true;
-            send('dismissed');
+            // React may unmount one sheet before mounting its replacement.
+            // Only dismiss after the overlay stays absent through that transition.
+            if (dismissalTimer === null) {
+              dismissalTimer = setTimeout(function() {
+                dismissalTimer = null;
+                if (composerSurface() || document.querySelector('[role="dialog"], [data-testid="sheetDialog"], [role="menu"], [role="listbox"], [data-testid="Dropdown"], [data-testid="emojiPicker"]')) return;
+                hasReportedDismissal = true;
+                send('dismissed');
+              }, 350);
+            }
           }
 
-          // Empty composers can close at the click itself. Keep the dialog
-          // painted while SwiftUI animates it and the blur out together.
-          // Nonempty drafts retain X's save/discard confirmation flow.
-          document.addEventListener('click', function(event) {
-            const close = event.target.closest && event.target.closest('[data-testid="app-bar-close"]');
-            if (!close || hasReportedDismissal) return;
-            const surface = composerSurface();
-            if (!surface || !surface.node.contains(close)) return;
-            const text = Array.from(surface.node.querySelectorAll('[contenteditable="true"]'))
-              .some(node => node.textContent.trim().length > 0);
-            const attachments = surface.node.querySelector('[data-testid="attachments"], [data-testid="removeMedia"], [data-testid="pollQuestion"]');
-            if (text || attachments) return;
-            event.preventDefault();
-            event.stopImmediatePropagation();
-            hasReportedDismissal = true;
-            send('dismissed');
-          }, true);
+          // Leave close/back clicks to X: nested pickers and draft confirmation
+          // sheets share the same app-bar-close test ID as the composer.
 
           updatePresentation();
-          setTimeout(updatePresentation, 920);
           const observer = new MutationObserver(updatePresentation);
           observer.observe(document.documentElement, { childList: true, subtree: true });
           window.__mosaicComposerPresentationObserver = observer;
@@ -2668,6 +2788,7 @@ struct WebColumnView: NSViewRepresentable {
         var onUnreadNotificationCountChanged: ((Int, NotificationActivity?) -> Void)?
         var onComposerPresentationReady: (() -> Void)?
         var onComposerDismissed: (() -> Void)?
+        var onLocationRequested: (() -> Void)?
         var mediaSuspensionState: Bool?
         weak var deckWebView: DeckWKWebView?
         var columnAppearanceMode: ColumnAppearanceMode
@@ -2707,6 +2828,8 @@ struct WebColumnView: NSViewRepresentable {
             self.enableBroadHandleDetection = enableBroadHandleDetection
             self.onPageReadyScript = onPageReadyScript
         }
+
+        private var composerPopup: ComposerPopupController?
 
         private var postURLObservation: NSKeyValueObservation?
         private var postRecoveryWork: DispatchWorkItem?
@@ -3015,6 +3138,17 @@ struct WebColumnView: NSViewRepresentable {
                 case .openExternally:
                     NSWorkspace.shared.open(targetURL)
                 case .allowInWebView:
+                    if onComposerDismissed != nil, let window = webView.window {
+                        // X populates a window.open('about:blank') result later.
+                        // Returning nil and navigating the parent destroys its draft.
+                        composerPopup?.close()
+                        let popup = ComposerPopupController(configuration: configuration) { [weak self] in
+                            self?.composerPopup = nil
+                        }
+                        composerPopup = popup
+                        popup.present(in: window)
+                        return popup.webView
+                    }
                     webView.load(URLRequest(url: targetURL))
                 case .cancel:
                     break
@@ -3123,6 +3257,8 @@ struct WebColumnView: NSViewRepresentable {
                 guard let payload = message.body as? [String: Any],
                       let event = payload["event"] as? String else { return }
                 switch event {
+                case "locationAccess":
+                    onLocationRequested?()
                 case "ready":
                     onComposerPresentationReady?()
                 case "dismissed":

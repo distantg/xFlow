@@ -155,7 +155,7 @@ struct MainDeckView: View {
                 .frame(width: 0, height: 0)
         }
         .overlay {
-            if hasFinishedLaunchPresentation && hasRestoredLaunchSession, let activeAccount = store.activeAccount {
+            if hasFinishedLaunchPresentation && hasRestoredLaunchSession && store.isComposerSheetPresented, let activeAccount = store.activeAccount {
                 composerOverlay(account: activeAccount)
                     .zIndex(45)
                     .allowsHitTesting(store.isComposerSheetPresented && !isComposerDismissalPending)
@@ -218,10 +218,11 @@ struct MainDeckView: View {
         }
         .onChange(of: store.isComposerSheetPresented) { isPresented in
             if isPresented {
-                if isComposerReady { revealComposer() }
+                isComposerContentVisible = true
                 return
             }
             isComposerContentVisible = false
+            isComposerReady = false
             isComposerDismissalPending = false
         }
         .onChange(of: store.activeAccountID) { _ in
@@ -565,29 +566,45 @@ struct MainDeckView: View {
     }
 
     private func composerOverlay(account: DeckAccount) -> some View {
-        ZStack {
-            composerBackdrop
-                .ignoresSafeArea()
-                .opacity(isComposerContentVisible ? 1 : 0)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    dismissComposer()
-                }
+        GeometryReader { geometry in
+            ZStack {
+                // X owns dismissal so nested sheets and unsaved drafts get
+                // their normal back/confirmation flow before the native fade.
+                composerBackdrop
+                    .ignoresSafeArea()
+                    .opacity(store.isComposerSheetPresented && !isComposerDismissalPending ? 1 : 0)
 
-            ComposerSheetView(
-                account: account,
-                onReady: revealComposer,
-                onDismiss: dismissComposer
-            )
-                .id("\(account.id)-\(composerGeneration)")
-                .environmentObject(store)
-                .scaleEffect(isComposerContentVisible || reduceMotion ? 1 : 0.88)
-                .offset(y: isComposerContentVisible || reduceMotion ? 0 : 20)
-                .opacity(isComposerContentVisible ? 1 : 0)
-                .padding(28)
+                // Create a fresh, visible web view on demand. A hidden preload
+                // can stall X's lazy dialogs and retain a dismissed route.
+                ComposerSheetView(
+                    account: account,
+                    onReady: revealComposer,
+                    onDismiss: dismissComposer
+                )
+                    .id("\(account.id)-\(composerGeneration)")
+                    .environmentObject(store)
+                    .frame(
+                        width: max(1, min(980, geometry.size.width - 32)),
+                        height: max(1, min(760, geometry.size.height - 32))
+                    )
+                    .scaleEffect(isComposerContentVisible || reduceMotion ? 1 : 0.88)
+                    .offset(y: isComposerContentVisible || reduceMotion ? 0 : 20)
+                    .opacity(store.isComposerSheetPresented && !isComposerDismissalPending ? 1 : 0)
+
+                if !isComposerReady && !isComposerDismissalPending {
+                    VStack(spacing: 16) {
+                        ProgressView().controlSize(.small)
+                        Text("Opening composer…").font(.callout)
+                        Button("Cancel", action: dismissComposer)
+                            .buttonStyle(.plain)
+                    }
+                    .padding(28)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22))
+                }
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
         }
         .animation(MosaicMotion.expressive(reduceMotion: reduceMotion), value: store.isComposerSheetPresented)
-        .onExitCommand(perform: dismissComposer)
     }
 
     private var composerBackdrop: some View {
