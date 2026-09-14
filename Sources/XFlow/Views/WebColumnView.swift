@@ -392,7 +392,7 @@ struct WebColumnView: NSViewRepresentable {
             contentController.add(coordinator, name: Coordinator.composerPresentationMessageName)
             contentController.addUserScript(WKUserScript(
                 source: Coordinator.composerPresentationScript,
-                injectionTime: .atDocumentEnd,
+                injectionTime: .atDocumentStart,
                 forMainFrameOnly: true
             ))
         }
@@ -628,6 +628,11 @@ struct WebColumnView: NSViewRepresentable {
           const style = document.createElement('style');
           style.id = 'mosaic-composer-presentation-style';
           style.textContent = `
+            /* Keep the native web view active for X's lazy loading, but suppress
+               its initial opaque page until the styled composer is mounted. */
+            html:not([data-mosaic-composer-ready="true"]) {
+              opacity: 0 !important;
+            }
             html,
             body,
             #react-root,
@@ -790,9 +795,9 @@ struct WebColumnView: NSViewRepresentable {
 
           function reportReady(dialog) {
             if (hasReportedReady || !dialog.isConnected) return;
-            // This WKWebView is preloaded at zero opacity. WebKit can defer
-            // animation frames until it is visible, so readiness cannot wait
-            // for a paint that itself depends on the native ready callback.
+            // CSS opacity preserves layout and lazy loading in the visible
+            // WKWebView. Reveal only after the dialog theme has been applied.
+            document.documentElement.setAttribute('data-mosaic-composer-ready', 'true');
             hasReportedReady = true;
             send('ready');
           }
@@ -2109,8 +2114,11 @@ struct WebColumnView: NSViewRepresentable {
                       opener.type = 'button';
                       opener.textContent = 'Reply';
                       opener.dataset.mosaicReplyOpener = 'true';
-                      composer.appendChild(opener);
                     }
+                    // X replaces the collapsed editor shell when expanding a reply.
+                    // Coordinates are relative to the newly selected composer, so
+                    // an existing opener must move to that same containing block.
+                    if (opener.parentElement !== composer) composer.appendChild(opener);
                     opener.onclick = event => {
                       event.preventDefault();
                       event.stopPropagation();

@@ -116,7 +116,7 @@ final class ColumnAppearanceTests: XCTestCase {
         var timelineEditor = { parentElement: inline, closest: () => null };
         var modalEditor = { closest: () => dialog };
         var document = {
-          head: { appendChild: () => {} }, documentElement: {},
+          head: { appendChild: () => {} }, documentElement: { setAttribute: () => {} },
           addEventListener: () => {},
           createElement: () => ({}),
           getElementById: () => null,

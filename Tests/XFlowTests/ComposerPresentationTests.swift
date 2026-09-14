@@ -8,6 +8,73 @@ final class ComposerPresentationTests: XCTestCase, WKNavigationDelegate, WKScrip
     private var loaded: XCTestExpectation?
     private var events: [String] = []
 
+    func testComposerHidesInitialOpaquePageUntilDialogIsStyled() async throws {
+        let configuration = WKWebViewConfiguration()
+        configuration.userContentController.addUserScript(WKUserScript(
+            source: WebColumnView.Coordinator.composerPresentationScript,
+            injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 980, height: 700), configuration: configuration)
+        webView.navigationDelegate = self
+        loaded = expectation(description: "Composer loading page")
+        webView.loadHTMLString("""
+        <html style="background:black"><body style="background:black">
+        <script>window.initialOpacity = getComputedStyle(document.documentElement).opacity;</script>
+        <div id="layers"></div></body></html>
+        """, baseURL: URL(string: "https://x.com/compose/post"))
+        await fulfillment(of: [try XCTUnwrap(loaded)], timeout: 10)
+        let initialOpacity = try await webView.evaluateJavaScript("window.initialOpacity") as? String
+        XCTAssertEqual(initialOpacity, "0", "Opaque page must be hidden before page scripts execute")
+        let background = try await webView.evaluateJavaScript("getComputedStyle(document.documentElement).backgroundColor") as? String
+        XCTAssertEqual(background, "rgba(0, 0, 0, 0)")
+        _ = try await webView.evaluateJavaScript("""
+        document.getElementById('layers').innerHTML = '<div role="dialog"><div data-testid="tweetTextarea_0" contenteditable="true" role="textbox"></div></div>'; void 0;
+        """)
+        let ready = try await webView.evaluateJavaScript("""
+        getComputedStyle(document.documentElement).opacity === '1' &&
+        document.querySelector('[role=dialog]').dataset.mosaicComposeDialog === 'true'
+        """) as? Bool
+        XCTAssertEqual(ready, true, "Reveal only after the real dialog has its composer theme")
+    }
+
+    func testReplyOpenerMovesToExpandedComposerContainingBlock() async throws {
+        let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 390, height: 600))
+        webView.navigationDelegate = self
+        loaded = expectation(description: "Inline reply fixture loaded")
+        webView.loadHTMLString("""
+        <style>
+        body { margin:0; } #composer { position:relative; margin:16px; }
+        #oldShell { position:relative; margin-left:50px; }
+        #submit { width:76px; height:36px; margin-left:auto; display:block; }
+        </style>
+        <div data-testid="primaryColumn"><div id="composer"><a href="/test"><img width="40" height="40"></a>
+        <div id="oldShell"><div data-testid="tweetTextarea_0" role="textbox" contenteditable="true"></div>
+        <div data-testid="toolBar"><input type="file" data-testid="fileInput" hidden>
+        <button id="submit" data-testid="tweetButtonInline" disabled>Reply</button></div></div></div></div>
+        """, baseURL: URL(string: "https://x.com/test/status/123"))
+        await fulfillment(of: [try XCTUnwrap(loaded)], timeout: 10)
+        for width in [320, 390, 600] {
+            webView.frame.size.width = CGFloat(width)
+            _ = try await webView.evaluateJavaScript(WebColumnView.Coordinator.integratedColumnThemeScript)
+            // Reproduce X retaining the old opener below a positioned editor shell
+            // while expansion selects the outer avatar container as the composer.
+            _ = try await webView.evaluateJavaScript("""
+            void document.getElementById('oldShell').appendChild(document.querySelector('[data-mosaic-reply-opener]'));
+            """)
+            _ = try await webView.evaluateJavaScript(WebColumnView.Coordinator.integratedColumnThemeScript)
+            let aligned = try await webView.evaluateJavaScript("""
+            (() => {
+              const opener = document.querySelector('[data-mosaic-reply-opener]');
+              const button = document.getElementById('submit');
+              const a = opener.getBoundingClientRect(), b = button.getBoundingClientRect();
+              return opener.parentElement === document.querySelector('[data-mosaic-composer]') &&
+                Math.abs(a.left-b.left) < 1 && Math.abs(a.top-b.top) < 1 &&
+                Math.abs(a.width-b.width) < 1 && a.right <= innerWidth;
+            })()
+            """) as? Bool
+            XCTAssertEqual(aligned, true, "Expanded reply overlay must match the real button at width \(width)")
+        }
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         loaded?.fulfill()
     }

@@ -25,3 +25,7 @@ DerivedData/
 *.provisionprofile
 *.xcuserstate
 push-device-map.json
+
+# Local specialty editions must never enter regular releases.
+/specialty/
+/.build-clang-cache/
