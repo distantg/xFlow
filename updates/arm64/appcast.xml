@@ -4,20 +4,20 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Mosaic</title>
         <item>
-            <title>2.1.1</title>
-            <pubDate>Mon, 07 Sep 2026 18:35:38 -0700</pubDate>
+            <title>2.1.2</title>
+            <pubDate>Mon, 14 Sep 2026 04:12:30 -0700</pubDate>
             <link>https://github.com/distantg/xFlow/releases</link>
-            <sparkle:version>187</sparkle:version>
-            <sparkle:shortVersionString>2.1.1</sparkle:shortVersionString>
+            <sparkle:version>193</sparkle:version>
+            <sparkle:shortVersionString>2.1.2</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description><![CDATA[<h2>Mosaic 2.1.1</h2>
-<p>General bug fixes.</p>
+            <description><![CDATA[<h2>Mosaic 2.1.2</h2>
+<p>Squashed some bugs.</p>
 ]]></description>
-            <enclosure url="https://github.com/distantg/xFlow/releases/download/v2.1.1/Mosaic-2.1.1-187-arm64.zip" length="8748355" type="application/octet-stream" sparkle:edSignature="2uBgwC+5WPz/GP+muZQeaEvXeaMihXcSlC+MsDXE2MjraC2/dIPtss6JGvEKZGu6BHxUQm6wPU34f40AT3nCCA=="></enclosure>
+            <enclosure url="https://github.com/distantg/xFlow/releases/download/v2.1.2/Mosaic-2.1.2-193-arm64.zip" length="8748625" type="application/octet-stream" sparkle:edSignature="TIlZ++I9merq9/MkKLqX8fnDC5eeEbH7jA6Pbm8oPClwF1+x29YIKX4lQdWx1/zEMNyhegKATuoned6kVmLOBA=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: LFrJ8spKwphs4aAiI1OcM7rXxPUkwQGki7zhuwG/9vxpkdCCyaiKlX78+D1epoqosn4CnZfce4hq4Ane2b+RBg==
-length: 1293
+edSignature: yLOD5QKBvTB++msOkNJBAG25+aAB6Jf9dlw1ZCRL7UIAg0/NDctIrcV2mP1oMNKlL9Dv6eEwRuYGQz1O2jZnCQ==
+length: 1294
 -->

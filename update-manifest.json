@@ -1,7 +1,7 @@
 {
-  "latestVersion": "2.1.1",
-  "publishedAt": "2026-09-08T02:28:08Z",
-  "downloadURL": "https://github.com/distantg/xFlow/releases/tag/v2.1.1",
-  "releaseNotes": "General bug fixes.",
+  "latestVersion": "2.1.2",
+  "publishedAt": "2026-09-14T11:14:44Z",
+  "downloadURL": "https://github.com/distantg/xFlow/releases/tag/v2.1.2",
+  "releaseNotes": "Squashed some bugs.",
   "minimumSupportedVersion": "1.0"
 }
