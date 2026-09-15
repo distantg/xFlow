@@ -311,6 +311,7 @@ final class DeckWebColumnHostView: NSView {
 }
 
 struct WebColumnView: NSViewRepresentable {
+    @AppStorage(TimelineAdHiding.storageKey) private var hideAds = false
     let url: URL
     let refreshKey: String
     let accountID: UUID
@@ -521,6 +522,9 @@ struct WebColumnView: NSViewRepresentable {
     }
 
     private func update(webView: WKWebView, coordinator: Coordinator) {
+        if coordinator.appliedHideAds != hideAds {
+            coordinator.applyAdHiding(to: webView)
+        }
         if let webView = webView as? DeckWKWebView {
             webView.routeHorizontalScrollToParent = routeHorizontalScrollToParent
         }
@@ -2780,6 +2784,14 @@ struct WebColumnView: NSViewRepresentable {
 
         var currentURL: URL?
         var refreshKey: String = ""
+        var appliedHideAds: Bool?
+
+        func applyAdHiding(to webView: WKWebView) {
+            let enabled = UserDefaults.standard.bool(forKey: TimelineAdHiding.storageKey)
+            appliedHideAds = enabled
+            webView.evaluateJavaScript(TimelineAdHiding.script(enabled: enabled))
+        }
+
         var filter: ColumnFilter = .none
         var accountID: UUID?
         var lastBackNavigationID: UUID?
@@ -2920,6 +2932,7 @@ struct WebColumnView: NSViewRepresentable {
             if let suspended = mediaSuspensionState {
                 webView.evaluateJavaScript("window.__mosaicBackgroundSuspended = \(suspended ? "true" : "false");")
             }
+            applyAdHiding(to: webView)
             applyFilter(to: webView)
             applyColumnAppearance(to: webView)
             restoreCapturedPosition(in: webView)

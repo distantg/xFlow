@@ -5,6 +5,8 @@ struct MosaicSettingsView: View {
     @EnvironmentObject private var updateManager: UpdateManager
     @Environment(\.colorScheme) private var colorScheme
 
+    @AppStorage(TimelineAdHiding.storageKey) private var hideAds = false
+
     var body: some View {
         ZStack {
             MosaicBackdrop()
@@ -104,6 +106,15 @@ struct MosaicSettingsView: View {
                 }
                 MosaicSettingsGroup {
                     VStack(alignment: .leading, spacing: 10) {
+                        settingsLabel("Timelines", symbol: "line.3.horizontal.decrease.circle")
+                        Toggle("Hide ads", isOn: $hideAds)
+                        Text("Hide marked promoted posts in all timelines.")
+                            .font(.caption)
+                            .foregroundStyle(MosaicTheme.secondaryText(for: colorScheme))
+                    }
+                }
+                MosaicSettingsGroup {
+                    VStack(alignment: .leading, spacing: 10) {
                         settingsLabel("Updates", symbol: "arrow.down.circle")
                         Toggle("Automatically check for updates", isOn: Binding(
                             get: { updateManager.automaticallyChecksForUpdates },
@@ -124,7 +135,7 @@ struct MosaicSettingsView: View {
             }
             .padding(24)
         }
-        .frame(width: 520, height: 640)
+        .frame(width: 520, height: 760)
     }
 
     private var appearanceBinding: Binding<AppAppearanceMode> {
@@ -165,6 +176,7 @@ private struct MosaicSettingsGroup<Content: View>: View {
 
     var body: some View {
         content
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
             .background {
                 let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)

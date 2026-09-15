@@ -3,12 +3,19 @@ import SwiftUI
 @main
 struct XFlowApp: App {
     @NSApplicationDelegateAdaptor(XFlowAppDelegate.self) private var appDelegate
-    @StateObject private var store = DeckStore()
+    @StateObject private var store: DeckStore
+    private let shouldPresentWhatsNew: Bool
     @StateObject private var updateManager = UpdateManager()
+
+    init() {
+        shouldPresentWhatsNew = WhatsNewPresentation.shouldPresent()
+        if !shouldPresentWhatsNew { WhatsNewPresentation.markPresented() }
+        _store = StateObject(wrappedValue: DeckStore())
+    }
 
     var body: some Scene {
         Window("Mosaic", id: "main") {
-            MainDeckView()
+            MainDeckView(shouldPresentWhatsNew: shouldPresentWhatsNew)
                 .environmentObject(store)
                 .environmentObject(updateManager)
                 .preferredColorScheme(store.appearanceMode.preferredColorScheme)
