@@ -4,19 +4,19 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Mosaic</title>
         <item>
-            <title>2.1.2</title>
-            <pubDate>Mon, 14 Sep 2026 04:12:30 -0700</pubDate>
+            <title>2.2</title>
+            <pubDate>Tue, 15 Sep 2026 01:23:46 -0700</pubDate>
             <link>https://github.com/distantg/xFlow/releases</link>
-            <sparkle:version>193</sparkle:version>
-            <sparkle:shortVersionString>2.1.2</sparkle:shortVersionString>
+            <sparkle:version>200</sparkle:version>
+            <sparkle:shortVersionString>2.2</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <description><![CDATA[<h2>Mosaic 2.1.2</h2>
-<p>Squashed some bugs.</p>
+            <description><![CDATA[<h2>Mosaic 2.2</h2>
+<p>New feature: You can now hide advertisements in your timelines. Head over to settings &gt; timelines &gt; hide ads to enable or disable ad hiding.</p>
 ]]></description>
-            <enclosure url="https://github.com/distantg/xFlow/releases/download/v2.1.2/Mosaic-2.1.2-193-x86_64.zip" length="8787416" type="application/octet-stream" sparkle:edSignature="0wmEwymiiO3hhOdj/zwelnfznVPXpA9uvdmQE3Hnwa3XVOfYE4DAkNeAejkOkJ9mEifk/gJpLz69C4NI8tNeCQ=="></enclosure>
+            <enclosure url="https://github.com/distantg/xFlow/releases/download/v2.2/Mosaic-2.2-200-x86_64.zip" length="8816943" type="application/octet-stream" sparkle:edSignature="5ZWj1GyoxaXy/SGXKNWZHNwHJII365uIEKOIGLi3QWiMVZkJMlfaEEDAmssSKkY87e2AyAW8qlBUlmSCpMdQCA=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: efbQh3t3cLVTEA+bBs1NBzqX7W52Ouy1N3omk5k2kYtGlfuD/xNsp7hT7P75nFykBnIZA+0WOLhmeZmsTi9/Cg==
-length: 1216
+edSignature: A8fcPFckDm5nddmXLRC7WgACjaDpcmm1vDenEYePDis+ZCkdCs4EMT4cTxreECjyqteS5u+lHXnQD3ZQiYdFCg==
+length: 1333
 -->
