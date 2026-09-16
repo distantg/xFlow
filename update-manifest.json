@@ -1,7 +1,7 @@
 {
-  "latestVersion": "2.2",
-  "publishedAt": "2026-09-15T08:25:34Z",
-  "downloadURL": "https://github.com/distantg/xFlow/releases/tag/v2.2",
-  "releaseNotes": "New feature: You can now hide advertisements in your timelines. Head over to settings > timelines > hide ads to enable or disable ad hiding.",
+  "latestVersion": "2.2.1",
+  "publishedAt": "2026-09-16T11:37:31Z",
+  "downloadURL": "https://github.com/distantg/xFlow/releases/tag/v2.2.1",
+  "releaseNotes": "Added the ability to cycle between photos in a post with multiple photos without leaving in the expanded media view. Use the arrow keys on your computer or click on the arrows on the expanded media window to cycle between photos. Also fixed some UI/UX bugs.",
   "minimumSupportedVersion": "1.0"
 }

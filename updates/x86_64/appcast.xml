@@ -4,19 +4,19 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Mosaic</title>
         <item>
-            <title>2.2</title>
-            <pubDate>Tue, 15 Sep 2026 01:23:46 -0700</pubDate>
+            <title>2.2.1</title>
+            <pubDate>Wed, 16 Sep 2026 04:35:13 -0700</pubDate>
             <link>https://github.com/distantg/xFlow/releases</link>
-            <sparkle:version>200</sparkle:version>
-            <sparkle:shortVersionString>2.2</sparkle:shortVersionString>
+            <sparkle:version>204</sparkle:version>
+            <sparkle:shortVersionString>2.2.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <description><![CDATA[<h2>Mosaic 2.2</h2>
-<p>New feature: You can now hide advertisements in your timelines. Head over to settings &gt; timelines &gt; hide ads to enable or disable ad hiding.</p>
+            <description><![CDATA[<h2>Mosaic 2.2.1</h2>
+<p>Added the ability to cycle between photos in a post with multiple photos without leaving in the expanded media view. Use the arrow keys on your computer or click on the arrows on the expanded media window to cycle between photos. Also fixed some UI/UX bugs.</p>
 ]]></description>
-            <enclosure url="https://github.com/distantg/xFlow/releases/download/v2.2/Mosaic-2.2-200-x86_64.zip" length="8816943" type="application/octet-stream" sparkle:edSignature="5ZWj1GyoxaXy/SGXKNWZHNwHJII365uIEKOIGLi3QWiMVZkJMlfaEEDAmssSKkY87e2AyAW8qlBUlmSCpMdQCA=="></enclosure>
+            <enclosure url="https://github.com/distantg/xFlow/releases/download/v2.2.1/Mosaic-2.2.1-204-x86_64.zip" length="8802472" type="application/octet-stream" sparkle:edSignature="GXPCUQL/6rQ6/4pwphEee9q3AcAQ6nq0fWVS+1ZC1Y8ISMLEWlzNgcg2SUvh+zDNxtZcbMtIwmG3POK8tQgyCg=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: A8fcPFckDm5nddmXLRC7WgACjaDpcmm1vDenEYePDis+ZCkdCs4EMT4cTxreECjyqteS5u+lHXnQD3ZQiYdFCg==
-length: 1333
+edSignature: O7DUrQfPUwEhCO3xFMWRoVGBbBgZaj2rWoTvLc70Y4JHsC0XrnazbxBp96mGs8BStckk7QbViUdNx0TpTTMlBQ==
+length: 1454
 -->
