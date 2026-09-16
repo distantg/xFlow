@@ -9,8 +9,6 @@ private struct ColumnFramePreferenceKey: PreferenceKey {
 }
 
 struct MainDeckView: View {
-    var shouldPresentWhatsNew = false
-    @State private var isWhatsNewVisible = false
     @EnvironmentObject private var store: DeckStore
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
@@ -94,8 +92,7 @@ struct MainDeckView: View {
             }
             .ignoresSafeArea(.container, edges: .top)
             .background(deckGlassBackground)
-            .accessibilityHidden(isLaunchSplashVisible || isWhatsNewVisible)
-            .allowsHitTesting(!isWhatsNewVisible)
+            .accessibilityHidden(isLaunchSplashVisible)
         }
         .blur(
             radius: (isComposerContentVisible || mediaRequest?.kind == .image) && !reduceTransparency ? 1.875 : 0,
@@ -153,9 +150,6 @@ struct MainDeckView: View {
                 onSplashDismissed: {
                     // Remaining columns and session checks may finish in place.
                     hasFinishedLaunchPresentation = true
-                    if shouldPresentWhatsNew && WhatsNewPresentation.shouldPresent() {
-                        isWhatsNewVisible = true
-                    }
                 }
             )
                 .frame(width: 0, height: 0)
@@ -181,16 +175,6 @@ struct MainDeckView: View {
                 )
                 .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 .zIndex(50)
-            }
-        }
-        .overlay {
-            if isWhatsNewVisible {
-                ZStack {
-                    MosaicModalBackdrop().ignoresSafeArea()
-                        .onTapGesture { }
-                    WhatsNewView(onClose: { isWhatsNewVisible = false })
-                        .onAppear { WhatsNewPresentation.markPresented() }
-                }
             }
         }
         .animation(MosaicMotion.expressive(reduceMotion: reduceMotion), value: mediaRequest != nil)
