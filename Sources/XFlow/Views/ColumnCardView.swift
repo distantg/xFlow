@@ -96,6 +96,7 @@ struct ColumnCardView: View {
             .id("\(column.id.uuidString)-\(activeAccountID.uuidString)")
             .clipShape(BottomRoundedRectangle(radius: 13))
             .padding(.bottom, 6)
+            .padding(.trailing, resizeGutterWidth)
         }
         .clipShape(RoundedRectangle(cornerRadius: MosaicTheme.Radius.tile, style: .continuous))
         .background(
@@ -334,12 +335,15 @@ struct ColumnCardView: View {
         "\(globalRefreshSignal.uuidString)-\(localRefreshSignal.uuidString)"
     }
 
+    // Reserve a separate outer gutter so resizing never covers the web scrollbar.
+    private let resizeGutterWidth: CGFloat = 8
+
     private var resizeEdge: some View {
         Rectangle()
             .fill(Color.clear)
-            .frame(width: 10)
+            .frame(width: resizeGutterWidth)
             .contentShape(Rectangle())
-            .overlay(alignment: .leading) {
+            .overlay(alignment: .trailing) {
                 if isHoveringResizeEdge || resizeStartWidth != nil {
                     Rectangle()
                         .fill(MosaicTheme.activeAccent(for: colorScheme).opacity(0.62))

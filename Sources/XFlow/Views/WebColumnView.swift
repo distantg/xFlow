@@ -2345,7 +2345,8 @@ struct WebColumnView: NSViewRepresentable {
             state.visible = Boolean(visible);
             if (typeof document.querySelectorAll !== 'function') return;
             document.querySelectorAll('[data-mosaic-top-tab-shell="true"]').forEach(shell => {
-              shell.dataset.mosaicColumnMenuVisible = state.visible ? 'true' : 'false';
+              const value = state.visible ? 'true' : 'false';
+              if (shell.dataset.mosaicColumnMenuVisible !== value) shell.dataset.mosaicColumnMenuVisible = value;
             });
           }
 
@@ -2380,8 +2381,10 @@ struct WebColumnView: NSViewRepresentable {
             }
             const shells = Array.from(document.querySelectorAll('[data-mosaic-top-tab-shell="true"]'));
             shells.forEach(shell => {
-              shell.dataset.mosaicColumnScrolled = isScrolled ? 'true' : 'false';
-              shell.dataset.mosaicColumnMenuVisible = menuState.visible ? 'true' : 'false';
+              const scrolled = isScrolled ? 'true' : 'false';
+              const visible = menuState.visible ? 'true' : 'false';
+              if (shell.dataset.mosaicColumnScrolled !== scrolled) shell.dataset.mosaicColumnScrolled = scrolled;
+              if (shell.dataset.mosaicColumnMenuVisible !== visible) shell.dataset.mosaicColumnMenuVisible = visible;
             });
           }
 
@@ -2609,6 +2612,8 @@ struct WebColumnView: NSViewRepresentable {
 
           function installTopTabInteraction() {
             if (globalThis.__mosaicTopTabHandlers || typeof document.addEventListener !== 'function') return;
+            let scrollFrame = 0;
+            let latestScrollEvent = null;
             const handlers = {
               pointerover(event) {
                 const tabList = event.target && event.target.closest && event.target.closest('[data-mosaic-top-tab-rail="true"]');
@@ -2672,6 +2677,23 @@ struct WebColumnView: NSViewRepresentable {
                 }
               },
               scroll(event) {
+                // Native thumb tracking can outpace painting. Measure only the
+                // latest position once per frame, without delaying native scrolling.
+                latestScrollEvent = event;
+                if (scrollFrame) return;
+                scrollFrame = requestAnimationFrame(() => {
+                  scrollFrame = 0;
+                  const event = latestScrollEvent;
+                  latestScrollEvent = null;
+                  handlers.updateScroll(event);
+                });
+              },
+              cancelScroll() {
+                if (scrollFrame) cancelAnimationFrame(scrollFrame);
+                scrollFrame = 0;
+                latestScrollEvent = null;
+              },
+              updateScroll(event) {
                 const tabList = event.target && event.target.closest && event.target.closest('[data-mosaic-top-tab-rail="true"]');
                 if (tabList) updateTopTabOverflow(tabList);
                 updateTopTabScrollState(event.target);
@@ -2749,6 +2771,7 @@ struct WebColumnView: NSViewRepresentable {
           delete globalThis.__mosaicSetColumnMenuVisible;
           if (globalThis.__mosaicTopTabHandlers && typeof document.removeEventListener === 'function') {
             const handlers = globalThis.__mosaicTopTabHandlers;
+            handlers.cancelScroll();
             document.removeEventListener('pointerover', handlers.pointerover, true);
             document.removeEventListener('pointerout', handlers.pointerout, true);
             document.removeEventListener('wheel', handlers.wheel, true);
