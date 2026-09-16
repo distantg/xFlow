@@ -930,6 +930,49 @@ struct WebColumnView: NSViewRepresentable {
             return '';
           }
 
+          // Keep quoted posts and neighboring posts in their own galleries.
+          function mediaOwner(node) {
+            return node.closest('[data-testid="quoteTweet"], div[role="link"], article, div[data-testid="tweet"]');
+          }
+
+          function sendGallery(payload, selectedNode) {
+            const owner = mediaOwner(selectedNode);
+            if (!owner) { send(payload); return; }
+            const items = [];
+            let selectedIndex = -1;
+            owner.querySelectorAll('[data-testid="tweetPhoto"], [data-testid="videoPlayer"]').forEach(function(node) {
+              if (mediaOwner(node) !== owner) return;
+              if (node.parentElement && node.parentElement.closest('[data-testid="videoPlayer"], [data-testid="tweetPhoto"]')) return;
+              let item;
+              const video = node.querySelector('video');
+              if (video) {
+                const anchor = node.closest('a[href*="/status/"]');
+                const permalink = anchor ? anchor.href : findPermalink(node);
+                const status = permalink.match(/^(https:\\/\\/[^/]+\\/[^/]+\\/status\\/[0-9]+)/);
+                item = { kind: 'video', url: status ? status[1] + '/video/' + (items.length + 1) : permalink,
+                  mediaURL: [video.currentSrc, video.src, (video.querySelector('source') || {}).src].find(isTrustedDirectVideoURL) || '',
+                  currentTime: Number.isFinite(video.currentTime) ? video.currentTime : 0 };
+              } else {
+                const image = node.querySelector('img');
+                const url = image && (image.currentSrc || image.src);
+                if (!url) return;
+                item = { kind: 'image', url: url, mediaURL: url, currentTime: 0 };
+              }
+              if (node === selectedNode || node.contains(selectedNode)) {
+                selectedIndex = items.length;
+                item = payload;
+              }
+              items.push(item);
+            });
+            if (items.length > 1 && selectedIndex >= 0) {
+              payload.items = items.map(function(item) {
+                return { kind: item.kind, url: item.url, mediaURL: item.mediaURL, currentTime: item.currentTime };
+              });
+              payload.selectedIndex = selectedIndex;
+            }
+            send(payload);
+          }
+
           function buttonLabel(node) {
             if (!node) return '';
             const aria = node.getAttribute ? (node.getAttribute('aria-label') || '') : '';
@@ -987,7 +1030,7 @@ struct WebColumnView: NSViewRepresentable {
             const mediaURL = directVideoURL(videoNode);
             const timestamp = Number.isFinite(videoNode.currentTime) ? videoNode.currentTime : 0;
             pauseForPopup(videoNode);
-            send({ kind: 'video', url: permalink, mediaURL: mediaURL, currentTime: timestamp });
+            sendGallery({ kind: 'video', url: permalink, mediaURL: mediaURL, currentTime: timestamp }, videoContainer);
           }
 
           function isPlaybackControlTarget(event) {
@@ -1091,7 +1134,7 @@ struct WebColumnView: NSViewRepresentable {
               if (!mediaURL) return;
               event.preventDefault();
               event.stopPropagation();
-              send({ kind: 'image', url: mediaURL, mediaURL: mediaURL, currentTime: 0 });
+              sendGallery({ kind: 'image', url: mediaURL, mediaURL: mediaURL, currentTime: 0 }, imageContainer);
               return;
             }
 
@@ -3256,7 +3299,10 @@ struct WebColumnView: NSViewRepresentable {
                 ) else {
                     return
                 }
-                onMediaRequest?(request)
+                onMediaRequest?(request.includingGallery(
+                    payload["items"] as? [[String: Any]] ?? [],
+                    selectedIndex: payload["selectedIndex"] as? Int ?? 0
+                ))
                 return
             }
 

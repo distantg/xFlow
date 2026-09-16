@@ -12,6 +12,8 @@ struct MediaRequest: Identifiable {
     let url: URL
     let currentTime: Double?
     let mediaURL: URL?
+    var items: [MediaRequest] = []
+    var selectedIndex = 0
 
     init(kind: MediaKind, url: URL, currentTime: Double?, mediaURL: URL?) {
         self.kind = kind
@@ -23,6 +25,29 @@ struct MediaRequest: Identifiable {
         } else {
             self.mediaURL = mediaURL
         }
+    }
+
+    func includingGallery(_ payloads: [[String: Any]], selectedIndex: Int) -> MediaRequest {
+        guard payloads.count > 1, payloads.count <= 16,
+              payloads.indices.contains(selectedIndex) else { return self }
+        let validated = payloads.compactMap { payload -> MediaRequest? in
+            guard let rawKind = payload["kind"] as? String,
+                  let kind = MediaKind(rawValue: rawKind), kind != .link,
+                  let rawURL = payload["url"] as? String,
+                  let url = URL(string: rawURL) else { return nil }
+            return Self.validatedBridgeRequest(
+                kind: kind, url: url,
+                currentTime: (payload["currentTime"] as? NSNumber)?.doubleValue,
+                mediaURL: (payload["mediaURL"] as? String).flatMap(URL.init(string:))
+            )
+        }
+        guard validated.count == payloads.count,
+              validated[selectedIndex].kind == kind,
+              validated[selectedIndex].url == url else { return self }
+        var result = self
+        result.items = validated
+        result.selectedIndex = selectedIndex
+        return result
     }
 
     static func validatedBridgeRequest(

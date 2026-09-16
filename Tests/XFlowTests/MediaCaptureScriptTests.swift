@@ -20,6 +20,33 @@ final class MediaCaptureScriptTests: XCTestCase {
         XCTAssertNil(exception, exception?.toString() ?? "Unexpected JavaScript syntax error")
     }
 
+    func testGalleryCaptureKeepsPostOrderAndSelectedPhoto() throws {
+        let script = WebColumnView.Coordinator.mediaCaptureScript
+        let start = try XCTUnwrap(script.range(of: "function mediaOwner(node)"))
+        let end = try XCTUnwrap(script.range(of: "function buttonLabel(node)"))
+        let context = try XCTUnwrap(JSContext())
+        context.evaluateScript("""
+        var captured;
+        function send(payload) { captured = payload; }
+        var owner = { querySelectorAll: function() { return nodes; } };
+        function photo(url, foreign) {
+          return {
+            closest: function() { return foreign ? {} : owner; },
+            parentElement: { closest: function() { return null; } },
+            querySelector: function(selector) { return selector === 'img' ? { src: url } : null; },
+            contains: function(other) { return this === other; }
+          };
+        }
+        var nodes = [photo('first'), photo('second'), photo('quoted', true), photo('third')];
+        """)
+        context.evaluateScript(String(script[start.lowerBound..<end.lowerBound]))
+        context.evaluateScript("sendGallery({kind:'image',url:'second',mediaURL:'second'}, nodes[1]);")
+        XCTAssertNil(context.exception)
+        XCTAssertEqual(context.evaluateScript("captured.selectedIndex")?.toInt32(), 1)
+        XCTAssertEqual(context.evaluateScript("captured.items.map(function(i) { return i.url; }).join(',')")?.toString(), "first,second,third")
+        XCTAssertNotNil(context.evaluateScript("JSON.stringify(captured)")?.toString())
+    }
+
     func testMediaCaptureScriptPreservesNormalVideoControls() {
         let script = WebColumnView.Coordinator.mediaCaptureScript
 

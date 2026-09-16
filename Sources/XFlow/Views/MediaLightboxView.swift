@@ -9,6 +9,26 @@ struct MediaLightboxView: View {
     let accountID: UUID
     let onClose: () -> Void
 
+    @State private var selectedIndex: Int
+    @State private var keyMonitor: Any?
+
+    init(request: MediaRequest, accountID: UUID, onClose: @escaping () -> Void) {
+        self.request = request
+        self.accountID = accountID
+        self.onClose = onClose
+        _selectedIndex = State(initialValue: request.selectedIndex)
+    }
+
+    private var activeItem: MediaRequest {
+        request.items.indices.contains(selectedIndex) ? request.items[selectedIndex] : request
+    }
+
+    private func navigate(_ offset: Int) {
+        let next = selectedIndex + offset
+        guard request.items.indices.contains(next) else { return }
+        selectedIndex = next
+    }
+
     @State private var showClose = false
     @State private var didAppear = false
 
@@ -23,7 +43,18 @@ struct MediaLightboxView: View {
 
             ZStack(alignment: .topTrailing) {
                 content
+                    .id(activeItem.id)
                     .background(lightboxSurface)
+
+                if request.items.count > 1 {
+                    HStack {
+                        navigationButton(offset: -1, symbol: "chevron.left", label: "Previous media")
+                        Spacer()
+                        navigationButton(offset: 1, symbol: "chevron.right", label: "Next media")
+                    }
+                    .padding(.horizontal, 12)
+                    .frame(maxHeight: .infinity)
+                }
 
                 Button {
                     onClose()
@@ -54,11 +85,38 @@ struct MediaLightboxView: View {
                 }
             }
         }
+        .onAppear {
+            guard request.items.count > 1, keyMonitor == nil else { return }
+            let window = NSApp.keyWindow
+            keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                guard event.window === window,
+                      event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty else { return event }
+                if event.keyCode == 123 { navigate(-1); return nil }
+                if event.keyCode == 124 { navigate(1); return nil }
+                return event
+            }
+        }
+        .onDisappear {
+            if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+            keyMonitor = nil
+        }
+    }
+
+    private func navigationButton(offset: Int, symbol: String, label: String) -> some View {
+        Button { navigate(offset) } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(MosaicTheme.primaryText(for: colorScheme))
+        }
+        .buttonStyle(MosaicIconButtonStyle(size: 40, prominent: true))
+        .disabled(!request.items.indices.contains(selectedIndex + offset))
+        .accessibilityLabel(label)
+        .help(label)
     }
 
     @ViewBuilder
     private var lightboxBackdrop: some View {
-        if request.kind == .image {
+        if activeItem.kind == .image {
             MosaicModalBackdrop()
         } else {
             Color.black.opacity(colorScheme == .dark ? 0.48 : 0.25)
@@ -71,37 +129,37 @@ struct MediaLightboxView: View {
 
     @ViewBuilder
     private var content: some View {
-        if request.kind == .image, TrustedURLPolicy.isTrustedImageMediaURL(request.url) {
-            let preferredURL = request.mediaURL.flatMap {
+        if activeItem.kind == .image, TrustedURLPolicy.isTrustedImageMediaURL(activeItem.url) {
+            let preferredURL = activeItem.mediaURL.flatMap {
                 TrustedURLPolicy.isTrustedImageMediaURL($0) ? $0 : nil
-            } ?? request.url
+            } ?? activeItem.url
             imageContent(
                 preferredURL: preferredURL,
-                fallbackURL: request.url
+                fallbackURL: activeItem.url
             )
-        } else if request.kind == .video {
+        } else if activeItem.kind == .video {
             if let directSource = inlineVideoSourceURL {
                 InlineVideoPlayerWebView(
                     videoURL: directSource,
-                    startTime: request.currentTime ?? 0
+                    startTime: activeItem.currentTime ?? 0
                 )
             } else {
                 WebColumnView(
                     url: mediaPlaybackURL,
-                    refreshKey: "media-lightbox-\(request.id.uuidString)",
+                    refreshKey: "media-lightbox-\(activeItem.id.uuidString)",
                     accountID: accountID,
                     filter: .none,
                     enableChromeStripping: false,
                     enableMediaCapture: true,
                     enableHandleDetection: false,
-                    onPageReadyScript: videoSeekScript(startTime: request.currentTime ?? 0),
+                    onPageReadyScript: videoSeekScript(startTime: activeItem.currentTime ?? 0),
                     routeHorizontalScrollToParent: false
                 )
             }
         } else {
             WebColumnView(
-                url: request.url,
-                refreshKey: "media-lightbox-\(request.id.uuidString)",
+                url: activeItem.url,
+                refreshKey: "media-lightbox-\(activeItem.id.uuidString)",
                 accountID: accountID,
                 filter: .none,
                 enableChromeStripping: false,
@@ -124,21 +182,21 @@ struct MediaLightboxView: View {
     }
 
     private var mediaPlaybackURL: URL {
-        if isLikelyXRoute(request.url) {
-            return request.url
+        if isLikelyXRoute(activeItem.url) {
+            return activeItem.url
         }
-        if let mediaURL = request.mediaURL, isLikelyXRoute(mediaURL) {
+        if let mediaURL = activeItem.mediaURL, isLikelyXRoute(mediaURL) {
             return mediaURL
         }
-        return request.url
+        return activeItem.url
     }
 
     private var inlineVideoSourceURL: URL? {
-        if let mediaURL = request.mediaURL, TrustedURLPolicy.isTrustedVideoMediaURL(mediaURL) {
+        if let mediaURL = activeItem.mediaURL, TrustedURLPolicy.isTrustedVideoMediaURL(mediaURL) {
             return mediaURL
         }
-        if isDirectMediaURL(request.url) {
-            return request.url
+        if isDirectMediaURL(activeItem.url) {
+            return activeItem.url
         }
         return nil
     }
