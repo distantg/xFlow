@@ -4,20 +4,20 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Mosaic</title>
         <item>
-            <title>2.2.3</title>
-            <pubDate>Mon, 21 Sep 2026 18:27:19 -0700</pubDate>
+            <title>2.2.4</title>
+            <pubDate>Mon, 21 Sep 2026 21:46:52 -0700</pubDate>
             <link>https://github.com/distantg/xFlow/releases</link>
-            <sparkle:version>207</sparkle:version>
-            <sparkle:shortVersionString>2.2.3</sparkle:shortVersionString>
+            <sparkle:version>214</sparkle:version>
+            <sparkle:shortVersionString>2.2.4</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description><![CDATA[<h2>Mosaic 2.2.3</h2>
-<p>Fixed the account actions menu being dimmed and disabled with one account. You can now remove your last account and sign out.</p>
+            <description><![CDATA[<h2>Mosaic 2.2.4</h2>
+<p>Fixed UI bugs when performing a search within a column.</p>
 ]]></description>
-            <enclosure url="https://github.com/distantg/xFlow/releases/download/v2.2.3/Mosaic-2.2.3-207-arm64.zip" length="8770740" type="application/octet-stream" sparkle:edSignature="ZA7AiM7PAQ4ctuZlNK0G1WKuSnIWZfApRrzW8CxmLWQKdXVr7VV3wbnDaiDRBRciyXJRB4nt/fM9gkym+eqUCQ=="></enclosure>
+            <enclosure url="https://github.com/distantg/xFlow/releases/download/v2.2.4/Mosaic-2.2.4-214-arm64.zip" length="8771230" type="application/octet-stream" sparkle:edSignature="Qq0pve1a3H41pr72I3OoFi7IrFF8aOa/0T/bozK4MEvw/Ip6J7k3Jum2DnUj8KAyWt1WK9oKk7wk9D4BK7r/CQ=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: F/NQhXOtrjI94Jcxi9x5gLQxEaCnqPkuH6SAm1a0dnz97htqXnFGN+i/ebQSKfB9LT+XXPPSVDqInswKjBT8Cg==
-length: 1400
+edSignature: xbkWBCVY3NbaM4PfhNNwZRJ8GJPh7fud33+50WD1FXvJ3uebCO4EMzDxg0/SRDKM8wTdn/KzUT+ibq0DK4YqDw==
+length: 1330
 -->
