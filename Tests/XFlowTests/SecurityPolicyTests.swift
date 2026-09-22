@@ -4,6 +4,15 @@ import XCTest
 @testable import XFlow
 
 final class SecurityPolicyTests: XCTestCase {
+    func testGoogleSignInDetectionDoesNotTrustProviderAsXOrAcceptLookalikes() {
+        XCTAssertTrue(TrustedURLPolicy.isGoogleSignInPage(url("https://accounts.google.com/gsi/select")))
+        for value in ["http://accounts.google.com/login", "https://accounts.google.com.evil.example/login",
+                      "https://user@accounts.google.com/login", "https://accounts.google.com:444/login"] {
+            XCTAssertFalse(TrustedURLPolicy.isGoogleSignInPage(url(value)))
+        }
+        XCTAssertFalse(TrustedURLPolicy.isTrustedXPage(url("https://accounts.google.com/login")))
+    }
+
     func testXPagePolicyRejectsLookalikeAndInsecureHosts() {
         XCTAssertTrue(TrustedURLPolicy.isTrustedXPage(url("https://x.com/home")))
         XCTAssertFalse(TrustedURLPolicy.isTrustedXPage(url("http://x.com/home")))

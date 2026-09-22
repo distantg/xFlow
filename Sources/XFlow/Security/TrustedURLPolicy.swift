@@ -5,6 +5,10 @@ enum TrustedURLPolicy {
     private static let updateManifestHost = "raw.githubusercontent.com"
     private static let releaseHost = "github.com"
 
+    static func isGoogleSignInPage(_ url: URL) -> Bool {
+        isHTTPSURLWithoutCredentials(url) && normalizedHost(of: url) == "accounts.google.com"
+    }
+
     static func isTrustedXPage(_ url: URL) -> Bool {
         guard isHTTPSURLWithoutCredentials(url),
               let host = normalizedHost(of: url) else {

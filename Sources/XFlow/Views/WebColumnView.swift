@@ -3208,12 +3208,35 @@ struct WebColumnView: NSViewRepresentable {
             completionHandler(response == .OK ? panel.urls : nil)
         }
 
+        private var isShowingGoogleSignInNotice = false
+
+        private func explainGoogleSignIn(in webView: WKWebView) {
+            guard !isShowingGoogleSignInNotice, let window = webView.window else { return }
+            isShowingGoogleSignInNotice = true
+            let alert = NSAlert()
+            alert.messageText = "Use your X username to sign in"
+            alert.informativeText = "Google doesn't support sign-in inside Mosaic's embedded browser. Enter your X username or email in the sign-in form below instead. If you created your account with Google and don't have an X password, use Forgot password? to set one, then return here. Signing in through a separate browser won't sign Mosaic in."
+            alert.addButton(withTitle: "Return to X sign-in")
+            alert.beginSheetModal(for: window) { [weak self] _ in
+                self?.isShowingGoogleSignInNotice = false
+            }
+        }
+
         func webView(
             _ webView: WKWebView,
             createWebViewWith configuration: WKWebViewConfiguration,
             for navigationAction: WKNavigationAction,
             windowFeatures: WKWindowFeatures
         ) -> WKWebView? {
+            // Google's button lives in its own iframe, so it is not an X bridge
+            // origin. Handle its user-initiated popup without granting native access.
+            if enableBroadHandleDetection, navigationAction.targetFrame == nil,
+               (navigationAction.request.url.map(TrustedURLPolicy.isGoogleSignInPage) == true ||
+                (navigationAction.sourceFrame.securityOrigin.protocol == "https" &&
+                 navigationAction.sourceFrame.securityOrigin.host == "accounts.google.com")) {
+                explainGoogleSignIn(in: webView)
+                return nil
+            }
             if navigationAction.targetFrame == nil,
                Self.isTrustedFrame(navigationAction.sourceFrame),
                let targetURL = navigationAction.request.url {
@@ -3250,6 +3273,14 @@ struct WebColumnView: NSViewRepresentable {
             decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
         ) {
             guard let targetURL = navigationAction.request.url else {
+                decisionHandler(.cancel)
+                return
+            }
+
+            if enableBroadHandleDetection,
+               navigationAction.targetFrame?.isMainFrame != false,
+               TrustedURLPolicy.isGoogleSignInPage(targetURL) {
+                explainGoogleSignIn(in: webView)
                 decisionHandler(.cancel)
                 return
             }

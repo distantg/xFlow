@@ -16,6 +16,7 @@ struct MainDeckView: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.controlActiveState) private var controlActiveState
 
+    @State private var showsMouseScroller = NSScroller.preferredScrollerStyle == .legacy
     @State private var isLaunchSplashVisible = true
     @State private var launchReadyColumns: Set<UUID> = []
     @State private var allowsLaunchContinue = false
@@ -123,20 +124,10 @@ struct MainDeckView: View {
         }
         .task(id: hasPresentedLaunchSplash) {
             guard hasPresentedLaunchSplash else { return }
-            // Load columns and validate the session concurrently. Network
-            // latency must not keep the native window hidden indefinitely.
+            // Use the same visible duration for fresh and restored installations.
+            // Readiness used to dismiss fresh accounts after only 350 ms.
             do {
-                try await Task.sleep(nanoseconds: 350_000_000)
-                var checks = 0
-                while isLaunchSplashVisible && !isLaunchContentReady {
-                    try await Task.sleep(nanoseconds: 100_000_000)
-                    checks += 1
-                    if checks >= 16 {
-                        allowsLaunchContinue = true
-                        dismissLaunchSplash()
-                        return
-                    }
-                }
+                try await Task.sleep(nanoseconds: 2_000_000_000)
                 dismissLaunchSplash()
             } catch { /* A cancelled launch must not schedule a later reveal. */ }
         }
@@ -317,8 +308,10 @@ struct MainDeckView: View {
     }
 
     private func deckScrollView(columnHeight: CGFloat, viewportSize: CGSize) -> some View {
-        ScrollViewReader { scrollProxy in
-            ScrollView(.horizontal, showsIndicators: false) {
+        let contentWidth = store.columns.reduce(CGFloat(240)) { $0 + $1.width + columnSpacing }
+        let scrollerHeight: CGFloat = showsMouseScroller && contentWidth > viewportSize.width ? 16 : 0
+        return ScrollViewReader { scrollProxy in
+            ScrollView(.horizontal, showsIndicators: showsMouseScroller) {
                 // Keep each lightweight column host alive after it has been visited so
                 // SwiftUI cannot dismantle a parked WKWebView and lose timeline state.
                 HStack(alignment: .top, spacing: columnSpacing) {
@@ -326,7 +319,7 @@ struct MainDeckView: View {
                         columnCard(
                             column,
                             renderAccountID: store.activeAccountID,
-                            columnHeight: columnHeight,
+                            columnHeight: max(0, columnHeight - scrollerHeight),
                             isWebViewLive: shouldKeepWebViewLive(for: column)
                         )
                         .opacity(isResetTileVisible(at: index) ? 1 : 0)
@@ -337,12 +330,13 @@ struct MainDeckView: View {
                     }
 
                     addColumnTile
-                        .frame(width: 220, height: columnHeight)
+                        .frame(width: 220, height: max(0, columnHeight - scrollerHeight))
                 }
                 .animation(MosaicMotion.structural(reduceMotion: reduceMotion), value: store.columns.map(\.id))
                 .padding(.horizontal, 10)
                 .padding(.bottom, 10)
                 .padding(.top, 10)
+                .background(DeckMouseScroller(showsScroller: $showsMouseScroller))
             }
             .coordinateSpace(name: columnViewportCoordinateSpace)
             .onPreferenceChange(ColumnFramePreferenceKey.self) { frames in

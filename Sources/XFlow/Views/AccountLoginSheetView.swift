@@ -18,6 +18,12 @@ struct AccountLoginSheetView: View {
         VStack(spacing: 0) {
             header
 
+            Text("For Google-linked accounts, use your X username and password. If needed, select Forgot password? to set an X password.")
+                .font(.caption)
+                .foregroundStyle(MosaicTheme.secondaryText(for: colorScheme))
+                .padding(.horizontal, 16)
+                .padding(.bottom, 10)
+
             Divider()
                 .overlay(MosaicTheme.hairline(for: colorScheme))
 
