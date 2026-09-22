@@ -1216,6 +1216,7 @@ struct WebColumnView: NSViewRepresentable {
               --mosaic-surface-hover: rgba(202, 220, 235, 0.085);
               --mosaic-inset: rgba(3, 8, 15, 0.2);
               --mosaic-tab-surface: rgba(61, 61, 58, 0.94);
+              --mosaic-search-surface: rgb(61, 61, 58);
               --mosaic-composer-surface: rgba(231, 216, 190, 0.11);
               --mosaic-composer-focus: rgba(231, 216, 190, 0.15);
               --mosaic-composer-edge: rgba(231, 216, 190, 0.043);
@@ -1400,6 +1401,35 @@ struct WebColumnView: NSViewRepresentable {
               box-shadow: none !important;
               -webkit-backdrop-filter: none !important;
               backdrop-filter: none !important;
+            }
+
+            /* Search suggestions extend below the header. Only release its
+               clipping while the search row exists, including the mouse-down to
+               click interval when a suggestion takes focus from the input. */
+            [data-testid="primaryColumn"] [data-mosaic-top-tab-shell="true"]:has(input[data-testid="SearchBox_Search_Input"]) {
+              overflow: visible !important;
+            }
+
+            [data-testid="primaryColumn"] [data-mosaic-top-tab-shell="true"]:has(input[data-testid="SearchBox_Search_Input"]):focus-within {
+              opacity: 1 !important;
+              transform: none !important;
+              pointer-events: auto !important;
+            }
+
+            /* Raise the search row above its sibling tabs, without changing
+               X's positioning or the geometry of the results popup. */
+            [data-testid="primaryColumn"] [data-mosaic-top-tab-shell="true"] > :has(input[data-testid="SearchBox_Search_Input"]) {
+              z-index: 2 !important;
+            }
+
+            [data-testid="primaryColumn"] [role="search"]:has(input[data-testid="SearchBox_Search_Input"]) {
+              z-index: 31 !important;
+            }
+
+            [data-testid="primaryColumn"] [role="search"] [role="listbox"],
+            [data-testid="primaryColumn"] [role="search"] [data-testid^="typeaheadDropdown-"] {
+              background: var(--mosaic-search-surface) !important;
+              z-index: 32 !important;
             }
 
             /* Profile sections remain available while reading the timeline. */
@@ -2026,6 +2056,7 @@ struct WebColumnView: NSViewRepresentable {
                 --mosaic-surface-hover: rgba(255, 255, 252, 0.34);
                 --mosaic-inset: rgba(117, 148, 170, 0.11);
                 --mosaic-tab-surface: rgba(247, 248, 246, 0.94);
+                --mosaic-search-surface: rgb(247, 248, 246);
                 --mosaic-composer-surface: rgba(113, 94, 65, 0.028);
                 --mosaic-composer-focus: rgba(113, 94, 65, 0.043);
                 --mosaic-composer-edge: rgba(113, 94, 65, 0.01);
