@@ -1292,6 +1292,14 @@ struct WebColumnView: NSViewRepresentable {
               background: transparent !important;
             }
 
+            /* Match the chart's trade label to the surrounding theme text,
+               without tinting the exchange logo or changing the action. */
+            [data-testid="primaryColumn"] [data-mosaic-trade-label="true"],
+            [data-testid="primaryColumn"] [data-mosaic-trade-label="true"] :is(span, div) {
+              color: var(--mosaic-ink) !important;
+              -webkit-text-fill-color: var(--mosaic-ink) !important;
+            }
+
             [data-testid="primaryColumn"] [role="separator"] {
               background-color: var(--mosaic-hairline) !important;
               opacity: 0.24 !important;
@@ -2537,6 +2545,19 @@ struct WebColumnView: NSViewRepresentable {
             });
           }
 
+          function markTradeLabels() {
+            if (typeof document.querySelectorAll !== 'function') return;
+            document.querySelectorAll('[data-mosaic-trade-label="true"]').forEach(label => {
+              delete label.dataset.mosaicTradeLabel;
+            });
+            document.querySelectorAll('[data-testid="primaryColumn"] a').forEach(label => {
+              if (label.closest('article, [data-testid="tweet"], [role="dialog"]')) return;
+              const text = (label.innerText || label.textContent || '').trim().replace(/\\s+/g, ' ');
+              if (text !== 'Trade on Kraken') return;
+              label.dataset.mosaicTradeLabel = 'true';
+            });
+          }
+
           function markSubscribeButtons() {
             if (typeof document.querySelectorAll !== 'function') return;
             document.querySelectorAll('[data-mosaic-subscribe-button="true"]').forEach(control => {
@@ -2749,6 +2770,7 @@ struct WebColumnView: NSViewRepresentable {
           markReplyContexts();
           markTransientPostIndicators();
           markSubscribeButtons();
+          markTradeLabels();
           installTopTabInteraction();
           setColumnMenuVisible(true);
           if (!globalThis.__mosaicComposerObserver && typeof MutationObserver !== 'undefined' && document.body) {
@@ -2771,6 +2793,7 @@ struct WebColumnView: NSViewRepresentable {
                 markReplyContexts();
                 markTransientPostIndicators();
                 markSubscribeButtons();
+                markTradeLabels();
               });
             });
             globalThis.__mosaicComposerObserver.observe(document.body, {
@@ -2861,6 +2884,9 @@ struct WebColumnView: NSViewRepresentable {
             });
             document.querySelectorAll('[data-mosaic-subscribe-button="true"]').forEach(node => {
               delete node.dataset.mosaicSubscribeButton;
+            });
+            document.querySelectorAll('[data-mosaic-trade-label="true"]').forEach(node => {
+              delete node.dataset.mosaicTradeLabel;
             });
           }
           if (document.documentElement) delete document.documentElement.dataset.mosaicAppearance;
