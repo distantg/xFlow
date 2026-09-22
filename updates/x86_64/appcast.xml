@@ -4,19 +4,19 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Mosaic</title>
         <item>
-            <title>2.2.1</title>
-            <pubDate>Wed, 16 Sep 2026 04:35:13 -0700</pubDate>
+            <title>2.2.2</title>
+            <pubDate>Mon, 21 Sep 2026 17:57:08 -0700</pubDate>
             <link>https://github.com/distantg/xFlow/releases</link>
-            <sparkle:version>204</sparkle:version>
-            <sparkle:shortVersionString>2.2.1</sparkle:shortVersionString>
+            <sparkle:version>206</sparkle:version>
+            <sparkle:shortVersionString>2.2.2</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <description><![CDATA[<h2>Mosaic 2.2.1</h2>
-<p>Added the ability to cycle between photos in a post with multiple photos without leaving in the expanded media view. Use the arrow keys on your computer or click on the arrows on the expanded media window to cycle between photos. Also fixed some UI/UX bugs.</p>
+            <description><![CDATA[<h2>Mosaic 2.2.2</h2>
+<p>Added sign-in guidance for Google-linked accounts. Added horizontal scrolling for traditional scroll-wheel mice.</p>
 ]]></description>
-            <enclosure url="https://github.com/distantg/xFlow/releases/download/v2.2.1/Mosaic-2.2.1-204-x86_64.zip" length="8802472" type="application/octet-stream" sparkle:edSignature="GXPCUQL/6rQ6/4pwphEee9q3AcAQ6nq0fWVS+1ZC1Y8ISMLEWlzNgcg2SUvh+zDNxtZcbMtIwmG3POK8tQgyCg=="></enclosure>
+            <enclosure url="https://github.com/distantg/xFlow/releases/download/v2.2.2/Mosaic-2.2.2-206-x86_64.zip" length="8811812" type="application/octet-stream" sparkle:edSignature="T2JEqtWL/T4L1wAvyeKhRjAtTpAw7cAWoeaguVCpDceLoW5rG78zA55/rDx/+2HOuVtFoouN27RyRGY62v7wBw=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: O7DUrQfPUwEhCO3xFMWRoVGBbBgZaj2rWoTvLc70Y4JHsC0XrnazbxBp96mGs8BStckk7QbViUdNx0TpTTMlBQ==
-length: 1454
+edSignature: rGCmRkiRPw12WBogy+gXAs3KVE9I++y4nxovncHj/H6bJlnIiKPGdc8sbyTMD08aCZ8GNrqeMjRXbDQshTxwDg==
+length: 1309
 -->
