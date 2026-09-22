@@ -4,20 +4,20 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Mosaic</title>
         <item>
-            <title>2.2.2</title>
-            <pubDate>Mon, 21 Sep 2026 17:57:07 -0700</pubDate>
+            <title>2.2.3</title>
+            <pubDate>Mon, 21 Sep 2026 18:27:19 -0700</pubDate>
             <link>https://github.com/distantg/xFlow/releases</link>
-            <sparkle:version>206</sparkle:version>
-            <sparkle:shortVersionString>2.2.2</sparkle:shortVersionString>
+            <sparkle:version>207</sparkle:version>
+            <sparkle:shortVersionString>2.2.3</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description><![CDATA[<h2>Mosaic 2.2.2</h2>
-<p>Added sign-in guidance for Google-linked accounts. Added horizontal scrolling for traditional scroll-wheel mice.</p>
+            <description><![CDATA[<h2>Mosaic 2.2.3</h2>
+<p>Fixed the account actions menu being dimmed and disabled with one account. You can now remove your last account and sign out.</p>
 ]]></description>
-            <enclosure url="https://github.com/distantg/xFlow/releases/download/v2.2.2/Mosaic-2.2.2-206-arm64.zip" length="8771434" type="application/octet-stream" sparkle:edSignature="qfi9hWCyhzZh5pcJnvae2+Ayvs3AEZIw7Ma8kWpxeDA1SX4udiwlvezJfn0r+3bXgu6Yi+YvJnYn2turGNmsAQ=="></enclosure>
+            <enclosure url="https://github.com/distantg/xFlow/releases/download/v2.2.3/Mosaic-2.2.3-207-arm64.zip" length="8770740" type="application/octet-stream" sparkle:edSignature="ZA7AiM7PAQ4ctuZlNK0G1WKuSnIWZfApRrzW8CxmLWQKdXVr7VV3wbnDaiDRBRciyXJRB4nt/fM9gkym+eqUCQ=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: kypFMYh82bIHQ2LMKimbyE2xmDPV0C/dbicm54u38/NMRuTlbDgsGJbnkzRv0zaRJSlvfqp4FejYV4LTkKDjCw==
-length: 1387
+edSignature: F/NQhXOtrjI94Jcxi9x5gLQxEaCnqPkuH6SAm1a0dnz97htqXnFGN+i/ebQSKfB9LT+XXPPSVDqInswKjBT8Cg==
+length: 1400
 -->

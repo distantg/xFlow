@@ -4,19 +4,19 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Mosaic</title>
         <item>
-            <title>2.2.2</title>
-            <pubDate>Mon, 21 Sep 2026 17:57:08 -0700</pubDate>
+            <title>2.2.3</title>
+            <pubDate>Mon, 21 Sep 2026 18:27:19 -0700</pubDate>
             <link>https://github.com/distantg/xFlow/releases</link>
-            <sparkle:version>206</sparkle:version>
-            <sparkle:shortVersionString>2.2.2</sparkle:shortVersionString>
+            <sparkle:version>207</sparkle:version>
+            <sparkle:shortVersionString>2.2.3</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <description><![CDATA[<h2>Mosaic 2.2.2</h2>
-<p>Added sign-in guidance for Google-linked accounts. Added horizontal scrolling for traditional scroll-wheel mice.</p>
+            <description><![CDATA[<h2>Mosaic 2.2.3</h2>
+<p>Fixed the account actions menu being dimmed and disabled with one account. You can now remove your last account and sign out.</p>
 ]]></description>
-            <enclosure url="https://github.com/distantg/xFlow/releases/download/v2.2.2/Mosaic-2.2.2-206-x86_64.zip" length="8811812" type="application/octet-stream" sparkle:edSignature="T2JEqtWL/T4L1wAvyeKhRjAtTpAw7cAWoeaguVCpDceLoW5rG78zA55/rDx/+2HOuVtFoouN27RyRGY62v7wBw=="></enclosure>
+            <enclosure url="https://github.com/distantg/xFlow/releases/download/v2.2.3/Mosaic-2.2.3-207-x86_64.zip" length="8810907" type="application/octet-stream" sparkle:edSignature="NFlQkvMPYXLaZrQIB/ThqCY17Xp/tBmPhtMQkJioYAXUw3ADbOncPvvtlOucP6MpKH6BOyQ/QW16znz54/GwBg=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: rGCmRkiRPw12WBogy+gXAs3KVE9I++y4nxovncHj/H6bJlnIiKPGdc8sbyTMD08aCZ8GNrqeMjRXbDQshTxwDg==
-length: 1309
+edSignature: lL0dDWlaj+PSXhUKoKabXB7G4J9vxN3sFJNeCNz1CaoVWzGIVUNXxYeLNOilH10gQXdpxp1QGFIF818OeRmSBQ==
+length: 1322
 -->
