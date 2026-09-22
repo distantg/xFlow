@@ -47,7 +47,7 @@ final class DeckStore: ObservableObject {
     @Published private(set) var addColumnInitialType: DeckColumnType = .home
     @Published var isComposerSheetPresented = false
 
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
     private let columnsStorageKey = "xflow.columns.v3"
     private let legacyColumnsStorageKey = "xdeck.columns.v3"
     private let columnsByAccountStorageKey = "xflow.columnsByAccount.v1"
@@ -63,7 +63,8 @@ final class DeckStore: ObservableObject {
     private var columnsByAccount: [String: [DeckColumn]] = [:]
     private var isHydratingColumns = false
 
-    init() {
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         columns = DeckColumn.starterColumns
 
         let loadedAccounts = Self.loadAccounts(from: defaults, key: accountsStorageKey)
@@ -204,16 +205,20 @@ final class DeckStore: ObservableObject {
     }
 
     func removeAccount(_ accountID: UUID) {
-        guard accounts.count > 1 else {
-            return
-        }
         guard let removeIndex = accounts.firstIndex(where: { $0.id == accountID }) else {
             return
         }
 
         let removingActive = activeAccountID == accountID
         AccountAvatarStorage.shared.remove(accountID)
-        accounts.remove(at: removeIndex)
+        // Keep an empty slot for the app's non-optional active account without
+        // retaining the removed account's identity, cookies, or column layout.
+        let removedLastAccount = accounts.count == 1
+        if removedLastAccount {
+            accounts = [DeckAccount(fallbackName: "Account 1", requiresLogin: true)]
+        } else {
+            accounts.remove(at: removeIndex)
+        }
         profileMetaRefreshInFlight.remove(accountID)
         profileMetaRetryCount.removeValue(forKey: accountID)
         columnsByAccount.removeValue(forKey: accountID.uuidString)
@@ -224,12 +229,17 @@ final class DeckStore: ObservableObject {
         }
 
         if removingActive {
+            isComposerSheetPresented = false
+            quickPanelDestination = nil
+            notificationNavigationURLs = [:]
             let fallbackIndex = min(removeIndex, max(0, accounts.count - 1))
             let fallbackID = accounts[fallbackIndex].id
             activeAccountID = fallbackID
             loadColumnsForActiveAccount()
             refreshAllColumns()
-            refreshAuthenticationState(for: fallbackID, shouldPromptIfNeeded: true)
+            if !removedLastAccount {
+                refreshAuthenticationState(for: fallbackID, shouldPromptIfNeeded: true)
+            }
         }
 
         // Let SwiftUI dismantle any visible web views before deleting the persistent WebKit store.

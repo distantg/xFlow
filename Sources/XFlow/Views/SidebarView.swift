@@ -242,9 +242,8 @@ struct SidebarView: View {
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .frame(width: 28, height: 28)
-            .disabled(accounts.count <= 1)
-            .opacity(accounts.count <= 1 ? 0.3 : 0.78)
-            .help(accounts.count <= 1 ? "At least one account is required" : "Account actions")
+            .opacity(0.78)
+            .help("Account actions")
             .accessibilityLabel("Actions for \(account.name)")
         }
     }
