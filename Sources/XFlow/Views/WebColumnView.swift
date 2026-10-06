@@ -2137,6 +2137,7 @@ struct WebColumnView: NSViewRepresentable {
             \(GrokComposerTheme.css)
           `;
 
+          \(DirectMessageThemeBridge.installScript)
           \(GrokComposerTheme.markingScript)
 
           function markInlineComposers() {
@@ -2810,6 +2811,7 @@ struct WebColumnView: NSViewRepresentable {
 
         static let removeIntegratedColumnThemeScript = """
         (function() {
+          \(DirectMessageThemeBridge.removeScript)
           const style = document.getElementById('mosaic-integrated-column-style');
           if (style) style.remove();
           if (globalThis.__mosaicComposerObserver) {
@@ -2991,6 +2993,7 @@ struct WebColumnView: NSViewRepresentable {
                     self?.onNavigation?(target)
                     if self?.columnAppearanceMode == .mosaicIntegrated {
                         webView.evaluateJavaScript(GrokComposerTheme.installScript, completionHandler: nil)
+                        webView.evaluateJavaScript(DirectMessageThemeBridge.installScript, completionHandler: nil)
                     }
                 }
                 guard target != self.postRecoveryURL else { return }
