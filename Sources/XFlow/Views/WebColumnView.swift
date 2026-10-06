@@ -1822,10 +1822,12 @@ struct WebColumnView: NSViewRepresentable {
               border-radius: 999px !important;
             }
 
+            /* Match the view count: only the glyph and count change color on hover. */
             [data-testid="primaryColumn"] article [role="group"] button:hover,
             [data-testid="primaryColumn"] article [role="group"] [role="button"]:hover {
-              background-color: var(--mosaic-surface-hover) !important;
-              box-shadow: 0 5px 14px rgba(0, 0, 0, 0.08) !important;
+              background-color: transparent !important;
+              box-shadow: none !important;
+              filter: none !important;
               transform: none !important;
             }
 
