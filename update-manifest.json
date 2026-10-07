@@ -1,7 +1,7 @@
 {
-  "latestVersion": "2.3",
-  "publishedAt": "2026-10-06T23:47:34Z",
-  "downloadURL": "https://github.com/distantg/xFlow/releases/tag/v2.3",
-  "releaseNotes": "Updated private message UI to match Mosiac UI for a better, more cohesive experience.",
+  "latestVersion": "2.3.1",
+  "publishedAt": "2026-10-07T00:20:22Z",
+  "downloadURL": "https://github.com/distantg/xFlow/releases/tag/v2.3.1",
+  "releaseNotes": "Fixed minor ui bug.",
   "minimumSupportedVersion": "1.0"
 }
