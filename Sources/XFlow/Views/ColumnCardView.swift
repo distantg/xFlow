@@ -95,8 +95,9 @@ struct ColumnCardView: View {
             )
             .id("\(column.id.uuidString)-\(activeAccountID.uuidString)")
             .clipShape(BottomRoundedRectangle(radius: 13))
+            // Keep the web surface inside the card's inset border on both sides.
+            .padding(.horizontal, MosaicSurface.borderWidth)
             .padding(.bottom, 6)
-            .padding(.trailing, resizeGutterWidth)
         }
         .clipShape(RoundedRectangle(cornerRadius: MosaicTheme.Radius.tile, style: .continuous))
         .background(
@@ -104,6 +105,7 @@ struct ColumnCardView: View {
         )
         .overlay(alignment: .trailing) {
             resizeEdge
+                .offset(x: resizeGutterWidth)
         }
         .onHover { hovering in
             withAnimation(MosaicMotion.micro(reduceMotion: reduceMotion)) {
@@ -335,7 +337,8 @@ struct ColumnCardView: View {
         "\(globalRefreshSignal.uuidString)-\(localRefreshSignal.uuidString)"
     }
 
-    // Reserve a separate outer gutter so resizing never covers the web scrollbar.
+    // Use the gap between cards so web content fills the entire column and
+    // resizing never covers the web scrollbar.
     private let resizeGutterWidth: CGFloat = 8
 
     private var resizeEdge: some View {

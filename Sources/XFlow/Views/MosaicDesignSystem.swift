@@ -88,6 +88,8 @@ enum MosaicSurfaceLevel {
 }
 
 struct MosaicSurface: View {
+    static let borderWidth: CGFloat = 0.8
+
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.controlActiveState) private var controlActiveState
@@ -106,7 +108,7 @@ struct MosaicSurface: View {
             .overlay(shape.fill(surfaceTint))
             .overlay(
                 shape
-                    .strokeBorder(borderColor, lineWidth: isSelected ? 1.35 : 0.8)
+                    .strokeBorder(borderColor, lineWidth: isSelected ? 1.35 : Self.borderWidth)
             )
             .overlay(
                 shape
