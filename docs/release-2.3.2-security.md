@@ -8,6 +8,7 @@ Version 2.3.2, build 228.
 - Gitleaks found no secrets in scanned Git history, the release source snapshot, or either mounted DMG.
 - The production branch's 406 historical file blobs and current source contain no detected local personal identifiers or personal account handle. The audit script's generic home-path detector was reviewed as a false positive.
 - No account stores, screenshots, diagnostics, or backup applications are included in the four approved release assets.
+- The public feed offered 2.3.2 with the exact release note to an existing 2.3.1 installation. The user completed the update; installed version 2.3.2 (228), code signature, and executable hash were verified on Apple Silicon. The previous app was backed up before installation.
 - Intel execution and clean-machine Gatekeeper testing were not performed. Apps remain ad-hoc signed and not notarized. Automated scans cannot exclude every possible form of sensitive data.
 
 ## Artifact SHA-256 hashes
