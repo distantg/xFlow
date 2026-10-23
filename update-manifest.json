@@ -1,7 +1,7 @@
 {
-  "latestVersion": "2.3.1",
-  "publishedAt": "2026-10-07T00:20:22Z",
-  "downloadURL": "https://github.com/distantg/xFlow/releases/tag/v2.3.1",
-  "releaseNotes": "Fixed minor ui bug.",
+  "latestVersion": "2.3.2",
+  "publishedAt": "2026-10-23T00:44:12Z",
+  "downloadURL": "https://github.com/distantg/xFlow/releases/tag/v2.3.2",
+  "releaseNotes": "Patched bugs: Mosaic would revert to native X ui in some instances and when typing a reply or a post the first keystroke would produce a chime.",
   "minimumSupportedVersion": "1.0"
 }
