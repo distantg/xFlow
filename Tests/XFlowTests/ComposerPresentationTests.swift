@@ -36,6 +36,133 @@ final class ComposerPresentationTests: XCTestCase, WKNavigationDelegate, WKScrip
         XCTAssertEqual(ready, true, "Reveal only after the real dialog has its composer theme")
     }
 
+    func testIntegratedReplyThemeCoversMobileRouteAndDesktopDialog() async throws {
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        let web = WKWebView(frame: CGRect(x: 0, y: 0, width: 390, height: 760), configuration: configuration)
+        web.navigationDelegate = self
+        loaded = expectation(description: "Full page reply loaded")
+        web.loadHTMLString("""
+        <style>body { margin: 0; } #page, #editorShell { background: rgb(20,20,20); } #bar { background: rgba(0,0,0,0.85); }
+        #send { background: rgb(29,155,240); transition: none !important; } #send span { color: rgb(120,120,120); }</style>
+        <div id="page"><div id="primary">
+          <header id="bar"><button id="back">Back</button><button id="send" data-testid="tweetButton" disabled><span>Reply</span></button></header>
+          <div id="editorShell"><div contenteditable="true" role="textbox" data-testid="tweetTextarea_0">Unsent reply</div>
+          <div data-testid="toolBar"><input type="file" data-testid="fileInput"><button>Add photo</button></div></div>
+        </div></div><div id="layers"></div>
+        <script>
+        // Restore/occlusion may postpone rendering frames indefinitely. The
+        // reply theme must still discover editors and replacement page bodies.
+        window.requestAnimationFrame = callback => 1;
+        window.cancelAnimationFrame = () => {};
+        window.backClicks = 0; document.getElementById('back').onclick = () => window.backClicks++;
+        </script>
+        """, baseURL: URL(string: "https://x.com/compose/post"))
+        await fulfillment(of: [try XCTUnwrap(loaded)], timeout: 10)
+        defer { web.stopLoading() }
+        _ = try await web.evaluateJavaScript(WebColumnView.Coordinator.integratedColumnThemeScript)
+        try await Task.sleep(nanoseconds: 200_000_000)
+        let mobile = try await web.evaluateJavaScript("""
+        (() => {
+          const editor = document.querySelector('[role="textbox"]');
+          editor.focus();
+          document.getElementById('back').click();
+          return [document.getElementById('primary').dataset.mosaicPostComposer,
+            getComputedStyle(document.getElementById('page')).backgroundColor,
+            getComputedStyle(document.getElementById('bar')).backgroundColor,
+            getComputedStyle(document.getElementById('editorShell')).backgroundColor,
+            getComputedStyle(document.getElementById('send')).backgroundColor,
+            getComputedStyle(document.querySelector('#send span')).color,
+            String(!document.querySelector('[data-mosaic-reply-opener]')),
+            editor.textContent, String(window.backClicks), String(document.activeElement === editor)];
+        })()
+        """) as? [String]
+        XCTAssertEqual(mobile, ["true", "rgba(0, 0, 0, 0)", "rgba(0, 0, 0, 0)", "rgba(0, 0, 0, 0)", "rgb(151, 143, 130)", "rgb(34, 28, 21)", "true", "Unsent reply", "1", "true"])
+
+        // X can mount the same reply in a desktop portal without reloading.
+        _ = try await web.evaluateJavaScript("""
+        history.pushState({}, '', '/home');
+        document.body.innerHTML = '<div id="page" style="background:rgb(18,18,18)"></div><div id="layers"></div>';
+        document.getElementById('layers').innerHTML = '<div id="dialog" role="dialog"><div id="modalPanel" style="background:black"><div role="textbox" contenteditable="true" data-testid="tweetTextarea_0">Modal draft</div><button data-testid="tweetButton"><span>Reply</span></button></div></div>';
+        void 0;
+        """)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let desktop = try await web.evaluateJavaScript("""
+        [document.getElementById('dialog').dataset.mosaicPostComposer,
+         getComputedStyle(document.querySelector('#dialog button')).backgroundColor,
+         getComputedStyle(document.getElementById('page')).backgroundColor,
+         document.querySelector('#dialog [role="textbox"]').textContent]
+        """) as? [String]
+        XCTAssertEqual(desktop, ["true", "rgb(231, 216, 190)", "rgb(18, 18, 18)", "Modal draft"])
+        _ = try await web.evaluateJavaScript(WebColumnView.Coordinator.removeIntegratedColumnThemeScript)
+        let removed = try await web.evaluateJavaScript("!document.querySelector('[data-mosaic-post-composer], [data-mosaic-post-compose-surface]')") as? Bool
+        XCTAssertEqual(removed, true)
+    }
+
+    func testFullPageReplyActionFollowsCounterAndNativeSubmitState() async throws {
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        let web = WKWebView(frame: CGRect(x: 0, y: 0, width: 390, height: 600), configuration: configuration)
+        web.navigationDelegate = self
+        loaded = expectation(description: "Reply action fixture loaded")
+        web.loadHTMLString("""
+        <style>body {margin:0} #page {width:390px} #editor {height:240px}
+        #footer {display:flex} #tools {display:flex;width:320px} #meter {width:20px;height:20px}</style>
+        <div id="page"><header><button>Back</button><button id="send" data-testid="tweetButton" disabled>Reply</button></header>
+        <div id="editor" contenteditable="true" role="textbox" data-testid="tweetTextarea_0">Draft stays here</div>
+        <div id="footer"><div id="tools" data-testid="toolBar"><input type="file"><button>Photo</button></div>
+        <div id="meter" role="progressbar" aria-valuenow="0"></div></div></div>
+        <script>window.sends=0;document.getElementById('send').onclick=()=>window.sends++;</script>
+        """, baseURL: URL(string: "https://x.com/compose/post"))
+        await fulfillment(of: [try XCTUnwrap(loaded)], timeout: 10)
+        _ = try await web.evaluateJavaScript(WebColumnView.Coordinator.integratedColumnThemeScript)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let initial = try await web.evaluateJavaScript("""
+        (() => {
+          const button=document.querySelector('[data-mosaic-reply-submit]');
+          const b=button.getBoundingClientRect(), c=document.getElementById('meter').getBoundingClientRect();
+          button.click();
+          return [String(button.disabled), String(b.left >= c.right), String(Math.abs(b.top+b.height/2-c.top-c.height/2)<1),
+            String(b.right<=innerWidth), getComputedStyle(document.getElementById('send')).display, String(window.sends)];
+        })()
+        """) as? [String]
+        XCTAssertEqual(initial, ["true", "true", "true", "true", "none", "0"])
+        _ = try await web.evaluateJavaScript("document.getElementById('send').disabled=false; void 0;")
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let sent = try await web.evaluateJavaScript("""
+        document.querySelector('[data-mosaic-reply-submit]').click();
+        [String(window.sends), document.getElementById('editor').textContent,
+         String(document.getElementById('send').parentElement.tagName === 'HEADER')];
+        """) as? [String]
+        XCTAssertEqual(sent, ["1", "Draft stays here", "true"])
+        // A React replacement must retire the old forwarding target.
+        _ = try await web.evaluateJavaScript("""
+        const old=document.getElementById('send'); const replacement=old.cloneNode(true);
+        replacement.setAttribute('aria-disabled','true'); old.replaceWith(replacement);
+        replacement.onclick=()=>window.sends+=10; void 0;
+        """)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let replaced = try await web.evaluateJavaScript("""
+        [String(document.querySelectorAll('[data-mosaic-reply-submit]').length),
+         String(document.querySelector('[data-mosaic-reply-submit]').disabled)];
+        """) as? [String]
+        XCTAssertEqual(replaced, ["1", "true"])
+        _ = try await web.evaluateJavaScript("document.getElementById('meter').remove(); void 0;")
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let empty = try await web.evaluateJavaScript("""
+        [String(document.querySelectorAll('[data-mosaic-reply-submit]').length),
+         document.querySelector('[data-mosaic-reply-submit]').parentElement.id,
+         getComputedStyle(document.getElementById('send')).display];
+        """) as? [String]
+        XCTAssertEqual(empty, ["1", "footer", "none"])
+        _ = try await web.evaluateJavaScript(WebColumnView.Coordinator.removeIntegratedColumnThemeScript)
+        let cleaned = try await web.evaluateJavaScript("""
+        !document.querySelector('[data-mosaic-reply-submit], [data-mosaic-reply-submit-source], [data-mosaic-reply-footer], [data-mosaic-reply-tools], [data-mosaic-reply-counter]') &&
+        getComputedStyle(document.getElementById('send')).display !== 'none'
+        """) as? Bool
+        XCTAssertEqual(cleaned, true)
+    }
+
     func testReplyOpenerMovesToExpandedComposerContainingBlock() async throws {
         let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 390, height: 600))
         webView.navigationDelegate = self

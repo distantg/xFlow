@@ -233,6 +233,22 @@ final class DeckWebColumnHostView: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    override func keyDown(with event: NSEvent) {
+        // WebKit resends an unhandled key through NSApp after processing it.
+        // End that text-only fallback here, before SwiftUI/AppKit can beep.
+        // Never replay or insert the text: X still owns the original event.
+        if let webView, let focused = window?.firstResponder as? NSView,
+           (focused === webView || focused.isDescendant(of: webView)),
+           !event.modifierFlags.contains(.command),
+           !event.modifierFlags.contains(.control),
+           let characters = event.characters, !characters.isEmpty,
+           characters.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) &&
+               !(0xF700...0xF8FF).contains($0.value) }) {
+            return
+        }
+        super.keyDown(with: event)
+    }
+
     func install(_ webView: DeckWKWebView) {
         lifecycleGeneration += 1
         isHibernating = false
@@ -2137,10 +2153,12 @@ struct WebColumnView: NSViewRepresentable {
             }
             \(DirectMessageTheme.css)
             \(GrokComposerTheme.css)
+            \(PostComposerTheme.css)
           `;
 
           \(DirectMessageThemeBridge.installScript)
           \(GrokComposerTheme.markingScript)
+          \(PostComposerTheme.installScript)
 
           function markInlineComposers() {
             if (typeof document.querySelectorAll !== 'function') return;
@@ -2158,7 +2176,9 @@ struct WebColumnView: NSViewRepresentable {
             const activeOpeners = new Set();
             document.querySelectorAll('[data-mosaic-reply-covered="true"]').forEach(button => delete button.dataset.mosaicReplyCovered);
             Array.from(document.querySelectorAll('[data-testid="tweetTextarea_0"], [role="textbox"], textarea, [aria-label="Post text"]'))
-              .filter(editor => !editor.querySelector('[role="textbox"]')).forEach(editor => {
+              .filter(editor => !editor.querySelector('[role="textbox"]') &&
+                !editor.closest('[role="dialog"], [data-testid="sheetDialog"]') &&
+                !/^\\/compose\\/(?:post|tweet)(?:\\/|$)/.test(location.pathname)).forEach(editor => {
               const primaryColumn = editor.closest('[data-testid="primaryColumn"]');
               let candidate = editor.parentElement;
               while (candidate && candidate !== primaryColumn) {
@@ -2218,7 +2238,7 @@ struct WebColumnView: NSViewRepresentable {
                       requestAnimationFrame(() => {
                         const richEditor = primaryColumn.querySelector('[contenteditable="true"][role="textbox"], [data-testid="tweetTextarea_0"][contenteditable="true"]');
                         if (richEditor) richEditor.focus({ preventScroll: true });
-                        markInlineComposers();
+                  markInlineComposers();
                       });
                     };
                     activeOpeners.add(opener);
@@ -2799,7 +2819,7 @@ struct WebColumnView: NSViewRepresentable {
                 markTradeLabels();
               });
             });
-            globalThis.__mosaicComposerObserver.observe(document.body, {
+            globalThis.__mosaicComposerObserver.observe(document, {
               childList: true,
               subtree: true,
               attributes: true,
@@ -2814,6 +2834,7 @@ struct WebColumnView: NSViewRepresentable {
         static let removeIntegratedColumnThemeScript = """
         (function() {
           \(DirectMessageThemeBridge.removeScript)
+          \(PostComposerTheme.removeMarkingScript)
           const style = document.getElementById('mosaic-integrated-column-style');
           if (style) style.remove();
           if (globalThis.__mosaicComposerObserver) {
@@ -2994,8 +3015,7 @@ struct WebColumnView: NSViewRepresentable {
                     guard let webView, webView.url == target else { return }
                     self?.onNavigation?(target)
                     if self?.columnAppearanceMode == .mosaicIntegrated {
-                        webView.evaluateJavaScript(GrokComposerTheme.installScript, completionHandler: nil)
-                        webView.evaluateJavaScript(DirectMessageThemeBridge.installScript, completionHandler: nil)
+                        self?.applyColumnAppearance(to: webView)
                     }
                 }
                 guard target != self.postRecoveryURL else { return }

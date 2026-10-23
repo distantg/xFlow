@@ -14,10 +14,18 @@ enum DirectMessageTheme {
 
     /* X Chat now mounts under xchatEmbedRoute, outside the document cascade.
        Clear its canvas, not every descendant: badges, avatars and media retain
-       their own backgrounds and native states. No blur/compositing per row. */
-    :host > .bg-background,
+       their own backgrounds and native states. No blur/compositing per row.
+       Chat adds theme/animation wrappers above dm-container. The shadow host
+       and every canvas utility must be clear, regardless of wrapper depth. */
+    :host,
+    :host .bg-primary:has([data-testid="dm-container"]),
+    :host .bg-background,
+    :host .bg-black,
     [data-testid="dm-container"],
-    [data-testid="dm-container"] .bg-background {
+    [data-testid="dm-container"] .bg-background,
+    [data-testid="dm-container"] .bg-black,
+    [data-testid="dm-container"] [data-testid="dm-inbox-panel"],
+    [data-testid="dm-container"] [data-testid="dm-search-bar"] {
       background: transparent !important;
       color: var(--mosaic-ink) !important;
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif !important;

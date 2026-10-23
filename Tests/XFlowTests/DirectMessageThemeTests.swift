@@ -4,6 +4,45 @@ import XCTest
 
 @MainActor
 final class DirectMessageThemeTests: XCTestCase {
+    func testChatCanvasSurvivesExtraThemeWrappersOutsideDMContainer() async throws {
+        let web = try await makeWebView()
+        defer { web.stopLoading() }
+        _ = try await web.evaluateJavaScript("""
+        (() => {
+          const host = document.getElementById('route');
+          host.style.backgroundColor = 'black';
+          const root = host.shadowRoot;
+          const canvas = root.querySelector('.bg-background');
+          // Current X Chat uses bg-primary for its outer canvas, with the
+          // dm-container below it. It is distinct from primary action buttons.
+          canvas.className = 'bg-primary';
+          const wrapper = document.createElement('div');
+          wrapper.className = 'bg-black';
+          wrapper.style.backgroundColor = 'black';
+          canvas.before(wrapper);
+          wrapper.appendChild(canvas);
+          const media = document.createElement('div');
+          media.id = 'media';
+          media.style.backgroundColor = 'rgb(15, 25, 35)';
+          canvas.appendChild(media);
+          return true;
+        })()
+        """)
+        _ = try await web.evaluateJavaScript(DirectMessageThemeBridge.installScript)
+        let backgrounds: [String] = try await value(web, """
+        (() => {
+          const host = document.getElementById('route');
+          const root = host.shadowRoot;
+          return [host, root.querySelector('.bg-black'), root.querySelector('.bg-primary'), root.getElementById('media')]
+            .map(node => getComputedStyle(node).backgroundColor);
+        })()
+        """)
+        XCTAssertEqual(backgrounds, ["rgba(0, 0, 0, 0)", "rgba(0, 0, 0, 0)", "rgba(0, 0, 0, 0)", "rgb(15, 25, 35)"])
+        _ = try await web.evaluateJavaScript(DirectMessageThemeBridge.removeScript)
+        let restored: String = try await value(web, "getComputedStyle(document.getElementById('route').shadowRoot.querySelector('.bg-black')).backgroundColor")
+        XCTAssertEqual(restored, "rgb(0, 0, 0)")
+    }
+
     func testShadowInboxAndComposerUseInheritedMosaicPalettes() async throws {
         let web = try await makeWebView()
         defer { web.stopLoading() }
@@ -407,7 +446,7 @@ final class DirectMessageThemeTests: XCTestCase {
       const root = host.attachShadow({mode: 'open'});
       root.innerHTML = `<style id="native-chat-style">
         :host { display: block; } * { box-sizing: border-box; }
-        .bg-background { background: rgb(0, 0, 0); color: white; }
+        .bg-background, .bg-primary { background: rgb(0, 0, 0); color: white; }
         [data-testid="dm-container"] { font: 16px -apple-system; }
         [data-testid="dm-inbox-panel"] { width: 100%; }
         [data-testid="dm-inbox-header"], [data-testid="dm-conversation-header"] { height: 52px; background: black; }
