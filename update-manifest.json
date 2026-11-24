@@ -1,7 +1,7 @@
 {
-  "latestVersion": "2.3.2",
-  "publishedAt": "2026-10-23T00:44:12Z",
-  "downloadURL": "https://github.com/distantg/xFlow/releases/tag/v2.3.2",
-  "releaseNotes": "Patched bugs: Mosaic would revert to native X ui in some instances and when typing a reply or a post the first keystroke would produce a chime.",
+  "latestVersion": "2.3.3",
+  "publishedAt": "2026-11-24T04:17:07Z",
+  "downloadURL": "https://github.com/distantg/xFlow/releases/tag/v2.3.3",
+  "releaseNotes": "Export and import settings for all accounts, with automatic backups before imports. Fixed clickwheel mouse scrolling that could move column frames without scrolling their content.",
   "minimumSupportedVersion": "1.0"
 }

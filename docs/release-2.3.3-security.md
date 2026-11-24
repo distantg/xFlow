@@ -9,6 +9,7 @@ This release adds settings export/import across all configured accounts and fixe
 - Both architecture DMGs match their signed update ZIP contents. Version, architecture, nested code signatures, sandbox entitlements, and update configuration passed validation.
 - Both update ZIPs and appcasts passed Sparkle signature verification with the existing signing identity. Signing material remained in Keychain.
 - Gitleaks and targeted privacy scans found no secrets or unresolved personal identifiers in the release source snapshot, production branch history, or exact release asset contents. Generic security-test fixtures and the home-path detection expression were reviewed.
+- All four uploaded GitHub asset SHA-256 digests match the approved local files. Both architecture installers and signed updater ZIPs were published before activating the production feeds.
 - Commit metadata uses the public repository handle and a GitHub no-reply address. Only the production branch and the new release tag are in scope for publication.
 - No user account stores, settings exports, screenshots, diagnostics, audit snapshots, or backup applications are included in the four release assets.
 - The installed Apple Silicon app's executable and version metadata match the packaged release. Version 2.3.3 (231) was verified in About Mosaic; the previous installation was backed up.
