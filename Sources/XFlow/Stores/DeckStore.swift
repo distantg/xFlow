@@ -15,6 +15,7 @@ final class DeckStore: ObservableObject {
     @Published var accounts: [DeckAccount] {
         didSet {
             persistAccounts()
+            pruneSettingsImportAliases()
         }
     }
 
@@ -58,6 +59,7 @@ final class DeckStore: ObservableObject {
     private let legacyActiveAccountStorageKey = "xdeck.activeAccountID.v1"
     private let appearanceModeStorageKey = "xflow.appearanceMode.v1"
     private let legacyAppearanceModeStorageKey = "xdeck.appearanceMode.v1"
+    private let settingsImportAliasesStorageKey = "xflow.settingsImportAliases.v1"
     private var profileMetaRefreshInFlight: Set<UUID> = []
     private var profileMetaRetryCount: [UUID: Int] = [:]
     private var columnsByAccount: [String: [DeckColumn]] = [:]
@@ -112,6 +114,7 @@ final class DeckStore: ObservableObject {
 
         loadColumnsForActiveAccount()
         persistAccounts()
+        pruneSettingsImportAliases()
         defaults.set(activeAccountID.uuidString, forKey: activeAccountStorageKey)
         defaults.set(appearanceMode.rawValue, forKey: appearanceModeStorageKey)
 
@@ -150,6 +153,209 @@ final class DeckStore: ObservableObject {
 
     func setColumnAppearanceMode(_ mode: ColumnAppearanceMode) {
         columnAppearanceMode = mode
+    }
+
+    func settingsArchive(
+        automaticallyChecksForUpdates: Bool,
+        automaticallyDownloadsUpdates: Bool
+    ) -> MosaicSettingsArchive {
+        MosaicSettingsArchive(
+            activeAccountID: activeAccountID,
+            preferences: .init(
+                appearanceMode: appearanceMode,
+                columnAppearanceMode: columnAppearanceMode,
+                hideAds: defaults.bool(forKey: TimelineAdHiding.storageKey),
+                automaticallyChecksForUpdates: automaticallyChecksForUpdates,
+                automaticallyDownloadsUpdates: automaticallyDownloadsUpdates
+            ),
+            accounts: accounts.map { account in
+                .init(
+                    id: account.id,
+                    fallbackName: account.fallbackName,
+                    handle: account.handle,
+                    columns: account.id == activeAccountID
+                        ? columns
+                        : columnsByAccount[account.id.uuidString] ?? DeckColumn.starterColumns
+                )
+            }
+        )
+    }
+
+    /// Matching by handle lets a layout follow an account signed in on another Mac.
+    /// An ID alone must never associate a different identity with a local session.
+    private func settingsAccountMatches(in archive: MosaicSettingsArchive) -> [UUID: DeckAccount] {
+        var matches: [UUID: DeckAccount] = [:]
+        var usedIDs = Set<UUID>()
+        // Reserve exact matches first, including duplicate sign-ins of one handle.
+        for saved in archive.accounts {
+            if let exact = accounts.first(where: {
+                $0.id == saved.id && $0.handle?.lowercased() == saved.handle?.lowercased()
+            }) {
+                matches[saved.id] = exact
+                usedIDs.insert(exact.id)
+            }
+        }
+        // A source slot may not have had a handle when it was first imported.
+        // Remember its local slot even after sign-in supplies that identity, or
+        // after a source UUID collision required assigning a different UUID.
+        let aliases = settingsImportAliases
+        for saved in archive.accounts where matches[saved.id] == nil {
+            guard let rawID = aliases[settingsImportAliasKey(for: saved)],
+                  let localID = UUID(uuidString: rawID),
+                  !usedIDs.contains(localID),
+                  let existing = accounts.first(where: { $0.id == localID }),
+                  saved.handle == nil || saved.handle?.lowercased() == existing.handle?.lowercased() else {
+                continue
+            }
+            matches[saved.id] = existing
+            usedIDs.insert(existing.id)
+        }
+        for saved in archive.accounts where matches[saved.id] == nil {
+            guard let handle = saved.handle?.lowercased(),
+                  let existing = accounts.first(where: {
+                      !usedIDs.contains($0.id) && $0.handle?.lowercased() == handle
+                  }) else { continue }
+            matches[saved.id] = existing
+            usedIDs.insert(existing.id)
+        }
+        return matches
+    }
+
+    func matchingSettingsAccountCount(in archive: MosaicSettingsArchive) -> Int {
+        settingsAccountMatches(in: archive).count
+    }
+
+    func importSettings(_ archive: MosaicSettingsArchive) throws {
+        // Validate the complete document before changing any persisted preference.
+        try archive.validate()
+
+        var importedAccounts: [DeckAccount] = []
+        var importedLayouts: [String: [DeckColumn]] = [:]
+        var importedActiveID: UUID?
+        var usedIDs = Set(accounts.map(\.id))
+        var aliases = settingsImportAliases
+        let matches = settingsAccountMatches(in: archive)
+        for saved in archive.accounts {
+            var account: DeckAccount
+            if let existing = matches[saved.id] {
+                // Keep this Mac's authentication state, avatar, and WebKit store.
+                account = existing
+                account.fallbackName = saved.fallbackName
+            } else {
+                // New slots always need a local sign-in. Keep the source ID when
+                // available so repeat imports also match accounts without handles.
+                let id = usedIDs.contains(saved.id) ? UUID() : saved.id
+                account = DeckAccount(
+                    id: id,
+                    fallbackName: saved.fallbackName,
+                    handle: saved.handle,
+                    requiresLogin: true
+                )
+            }
+            usedIDs.insert(account.id)
+            aliases[settingsImportAliasKey(for: saved)] = account.id.uuidString
+            importedAccounts.append(account)
+            // Fresh column IDs discard transient navigation and rendering state.
+            importedLayouts[account.id.uuidString] = saved.columns.map {
+                DeckColumn(type: $0.type, parameter: $0.parameter, customTitle: $0.customTitle,
+                           width: $0.width, filter: $0.filter)
+            }
+            if saved.id == archive.activeAccountID { importedActiveID = account.id }
+        }
+
+        let importedIDs = Set(importedAccounts.map(\.id))
+        let emptyInitialSlot = pristineInitialAccountID
+        let otherAccounts = accounts.filter {
+            !importedIDs.contains($0.id) && $0.id != emptyInitialSlot
+        }
+        var layouts = columnsByAccount
+        layouts[activeAccountID.uuidString] = columns
+        if let emptyInitialSlot, !importedIDs.contains(emptyInitialSlot) {
+            layouts.removeValue(forKey: emptyInitialSlot.uuidString)
+        }
+        layouts.merge(importedLayouts, uniquingKeysWith: { _, imported in imported })
+
+        let mergedAccounts = importedAccounts + otherAccounts
+        let mergedActiveID = importedActiveID ?? importedAccounts[0].id
+        guard mergedAccounts.count <= 100 else { throw SettingsImportError.tooManyAccounts }
+        let mergedArchive = MosaicSettingsArchive(
+            activeAccountID: mergedActiveID,
+            preferences: archive.preferences,
+            accounts: mergedAccounts.map { account in
+                .init(id: account.id, fallbackName: account.fallbackName, handle: account.handle,
+                      columns: layouts[account.id.uuidString] ?? DeckColumn.starterColumns)
+            }
+        )
+        do {
+            // A valid file can still exceed limits when merged with accounts
+            // already on this Mac. Keep the resulting workspace exportable.
+            _ = try mergedArchive.encoded()
+        } catch {
+            throw SettingsImportError.workspaceCannotBeExported(error.localizedDescription)
+        }
+        let mergedIDs = Set(mergedAccounts.map { $0.id.uuidString })
+        aliases = aliases.filter { mergedIDs.contains($0.value) }
+
+        presentedLoginAccountID = nil
+        isAddColumnSheetPresented = false
+        isComposerSheetPresented = false
+        quickPanelDestination = nil
+        scrollTargetColumnID = nil
+        notificationNavigationURLs = [:]
+        columnsByAccount = layouts
+        accounts = mergedAccounts
+        activeAccountID = mergedActiveID
+        loadColumnsForActiveAccount()
+        persistColumnsByAccount()
+        appearanceMode = archive.preferences.appearanceMode
+        columnAppearanceMode = archive.preferences.columnAppearanceMode
+        defaults.set(archive.preferences.hideAds, forKey: TimelineAdHiding.storageKey)
+        defaults.set(aliases, forKey: settingsImportAliasesStorageKey)
+        refreshAllColumns()
+    }
+
+    private var settingsImportAliases: [String: String] {
+        defaults.dictionary(forKey: settingsImportAliasesStorageKey) as? [String: String] ?? [:]
+    }
+
+    private func settingsImportAliasKey(for account: MosaicSettingsArchive.Account) -> String {
+        account.id.uuidString + ":" + (account.handle?.lowercased() ?? "")
+    }
+
+    private func pruneSettingsImportAliases() {
+        let aliases = settingsImportAliases
+        let accountIDs = Set(accounts.map { $0.id.uuidString })
+        let retained = aliases.filter { accountIDs.contains($0.value) }
+        if retained != aliases {
+            defaults.set(retained, forKey: settingsImportAliasesStorageKey)
+        }
+    }
+
+    enum SettingsImportError: LocalizedError {
+        case tooManyAccounts
+        case workspaceCannotBeExported(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .tooManyAccounts:
+                return "Importing these settings would exceed Mosaic's limit of 100 accounts in a settings file. Remove unused accounts and try again. No settings were changed."
+            case .workspaceCannotBeExported(let reason):
+                return "Importing these settings would make the combined workspace too large or invalid to export. No settings were changed. \(reason)"
+            }
+        }
+    }
+
+    private var pristineInitialAccountID: UUID? {
+        guard accounts.count == 1, let account = accounts.first,
+              account.requiresLogin, account.handle == nil, account.profileImageURL == nil,
+              account.fallbackName == "Account 1",
+              columns.count == DeckColumn.starterColumns.count else { return nil }
+        let unchanged = zip(columns, DeckColumn.starterColumns).allSatisfy { column, starter in
+            column.type == starter.type && column.parameter == starter.parameter &&
+            column.customTitle == starter.customTitle && column.width == starter.width &&
+            column.filter == starter.filter
+        }
+        return unchanged ? account.id : nil
     }
 
     func presentQuickAction(_ action: XSidebarAction) {

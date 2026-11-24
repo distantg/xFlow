@@ -30,8 +30,11 @@ struct DeckMouseScroller: NSViewRepresentable {
             wheelMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
                 guard let self, event.window === self.window else { return event }
                 if event.scrollingDeltaX != 0 || event.scrollingDeltaY != 0 {
-                    self.wheelMouse = !event.hasPreciseScrollingDeltas
-                    self.apply()
+                    let wheelMouse = !event.hasPreciseScrollingDeltas
+                    if self.wheelMouse != wheelMouse {
+                        self.wheelMouse = wheelMouse
+                        self.apply()
+                    }
                 }
                 return event
             }
@@ -48,9 +51,10 @@ struct DeckMouseScroller: NSViewRepresentable {
                 guard let self, self.window != nil else { return }
                 self.onChange?(visible)
                 guard let scrollView = self.enclosingScrollView else { return }
-                scrollView.scrollerStyle = visible ? .legacy : .overlay
-                scrollView.hasHorizontalScroller = visible
-                scrollView.autohidesScrollers = true
+                let style: NSScroller.Style = visible ? .legacy : .overlay
+                if scrollView.scrollerStyle != style { scrollView.scrollerStyle = style }
+                if scrollView.hasHorizontalScroller != visible { scrollView.hasHorizontalScroller = visible }
+                if !scrollView.autohidesScrollers { scrollView.autohidesScrollers = true }
             }
         }
 

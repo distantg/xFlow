@@ -130,7 +130,10 @@ final class DeckWKWebView: WKWebView {
             let phase = event.phase
             let momentum = event.momentumPhase
             let hasPhasedGesture = !phase.isEmpty || !momentum.isEmpty
-            let clearHorizontalIntent = horizontal > max(0.55, vertical * 0.52)
+            // A wheel mouse can report both axes for one notch. Only send the
+            // event to the deck when horizontal movement actually dominates;
+            // otherwise WebKit must receive it to scroll the column content.
+            let clearHorizontalIntent = horizontal > max(0.55, vertical * 1.15)
             let clearVerticalIntent = vertical > max(0.95, horizontal * 1.06)
 
             if hasPhasedGesture {

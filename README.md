@@ -56,6 +56,12 @@ Mosaic 2.1 and later use Sparkle 2 for signed automatic updates. Enable automati
 
 To update Mosaic, download the newest DMG, drag `Mosaic.app` into **Applications**, and choose **Replace** when Finder asks. Your accounts, login sessions, column layouts, and preferences are stored separately from the app bundle and should remain intact when replacing `Mosaic.app`.
 
+## Move Settings Between Macs
+
+Open **Mosaic > Settings > Settings backup**, choose **Export Settings…**, and copy the JSON file to your other Mac. Choose **Import Settings…** there to restore every account’s column order, widths, titles, filters, appearance, ad hiding, and update preferences.
+
+Import matches existing accounts by their X username and preserves their local login sessions. It adds other accounts, keeps accounts absent from the file, and restores the exported active account. Sign in once for each newly added account; passwords, cookies, and login tokens are never exported. A backup of the destination Mac’s current settings is saved before importing; choose **Show Backup** after import to find it and import it again if needed.
+
 ## Security
 
 - Each X account uses a separate WebKit website-data store. Removing an account also removes its cookies and stored website data.
